@@ -1,4 +1,4 @@
-const sqlite3 = require('sqlite3').verbose();
+const Database = require('better-sqlite3');
 const path = require('path');
 
 class DatabaseManager {
@@ -8,7 +8,7 @@ class DatabaseManager {
     }
 
     async initialize() {
-        return new Promise((resolve, reject) => {
+        try {
             // Ensure data directory exists
             const fs = require('fs');
             const dataDir = path.dirname(this.dbPath);
@@ -16,72 +16,61 @@ class DatabaseManager {
                 fs.mkdirSync(dataDir, { recursive: true });
             }
 
-            this.db = new sqlite3.Database(this.dbPath, (err) => {
-                if (err) {
-                    console.error('Error opening database:', err);
-                    reject(err);
-                } else {
-                    console.log('Connected to SQLite database');
-                    this.createTables().then(resolve).catch(reject);
-                }
-            });
-        });
+            this.db = new Database(this.dbPath);
+            console.log('Connected to SQLite database');
+            await this.createTables();
+        } catch (error) {
+            console.error('Error opening database:', error);
+            throw error;
+        }
     }
 
     async createTables() {
-        return new Promise((resolve, reject) => {
-            const createDevicesTable = `
-                CREATE TABLE IF NOT EXISTS devices (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    mac TEXT UNIQUE NOT NULL,
-                    ip TEXT,
-                    hostname TEXT,
-                    vendor TEXT,
-                    first_seen TEXT,
-                    last_seen TEXT,
-                    is_wired BOOLEAN DEFAULT 0,
-                    ap_mac TEXT,
-                    network TEXT,
-                    signal INTEGER,
-                    tx_bytes INTEGER DEFAULT 0,
-                    rx_bytes INTEGER DEFAULT 0,
-                    detected_at TEXT NOT NULL,
-                    acknowledged BOOLEAN DEFAULT 0,
-                    acknowledged_at TEXT,
-                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-                )
-            `;
+        const createDevicesTable = `
+            CREATE TABLE IF NOT EXISTS devices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mac TEXT UNIQUE NOT NULL,
+                ip TEXT,
+                hostname TEXT,
+                vendor TEXT,
+                first_seen TEXT,
+                last_seen TEXT,
+                is_wired BOOLEAN DEFAULT 0,
+                ap_mac TEXT,
+                network TEXT,
+                signal INTEGER,
+                tx_bytes INTEGER DEFAULT 0,
+                rx_bytes INTEGER DEFAULT 0,
+                detected_at TEXT NOT NULL,
+                acknowledged BOOLEAN DEFAULT 0,
+                acknowledged_at TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        `;
 
-            this.db.run(createDevicesTable, (err) => {
-                if (err) {
-                    console.error('Error creating devices table:', err);
-                    reject(err);
-                } else {
-                    console.log('Devices table ready');
-                    resolve();
-                }
-            });
-        });
+        try {
+            this.db.exec(createDevicesTable);
+            console.log('Devices table ready');
+        } catch (error) {
+            console.error('Error creating devices table:', error);
+            throw error;
+        }
     }
 
     async addNewDevices(devices) {
         if (!devices || devices.length === 0) return;
 
-        const insertDevice = `
+        const insertDevice = this.db.prepare(`
             INSERT OR IGNORE INTO devices (
                 mac, ip, hostname, vendor, first_seen, last_seen,
                 is_wired, ap_mac, network, signal, tx_bytes, rx_bytes, detected_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `;
+        `);
 
-        return new Promise((resolve, reject) => {
-            this.db.serialize(() => {
-                this.db.run('BEGIN TRANSACTION');
-                
-                const stmt = this.db.prepare(insertDevice);
-                
-                devices.forEach(device => {
-                    stmt.run([
+        try {
+            const transaction = this.db.transaction((devices) => {
+                for (const device of devices) {
+                    insertDevice.run(
                         device.mac,
                         device.ip,
                         device.hostname,
@@ -95,97 +84,87 @@ class DatabaseManager {
                         device.tx_bytes,
                         device.rx_bytes,
                         new Date().toISOString()
-                    ]);
-                });
-                
-                stmt.finalize((err) => {
-                    if (err) {
-                        this.db.run('ROLLBACK');
-                        reject(err);
-                    } else {
-                        this.db.run('COMMIT', (commitErr) => {
-                            if (commitErr) {
-                                reject(commitErr);
-                            } else {
-                                console.log(`Added ${devices.length} new device(s) to database`);
-                                resolve();
-                            }
-                        });
-                    }
-                });
+                    );
+                }
             });
-        });
+
+            transaction(devices);
+            console.log(`Added ${devices.length} new device(s) to database`);
+        } catch (error) {
+            console.error('Error adding devices:', error);
+            throw error;
+        }
     }
 
     async getUnacknowledgedDevices() {
-        return new Promise((resolve, reject) => {
+        try {
             const query = `
                 SELECT * FROM devices 
                 WHERE acknowledged = 0 
                 ORDER BY detected_at DESC
             `;
 
-            this.db.all(query, (err, rows) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    // Convert boolean values back from integers
-                    const devices = rows.map(row => ({
-                        ...row,
-                        is_wired: Boolean(row.is_wired),
-                        acknowledged: Boolean(row.acknowledged)
-                    }));
-                    resolve(devices);
-                }
-            });
-        });
+            const rows = this.db.prepare(query).all();
+            
+            // Convert boolean values back from integers
+            const devices = rows.map(row => ({
+                ...row,
+                is_wired: Boolean(row.is_wired),
+                acknowledged: Boolean(row.acknowledged)
+            }));
+            
+            return devices;
+        } catch (error) {
+            console.error('Error getting unacknowledged devices:', error);
+            throw error;
+        }
     }
 
     async acknowledgeDevice(mac) {
-        return new Promise((resolve, reject) => {
+        try {
             const query = `
                 UPDATE devices 
                 SET acknowledged = 1, acknowledged_at = ? 
                 WHERE mac = ?
             `;
 
-            this.db.run(query, [new Date().toISOString(), mac], function(err) {
-                if (err) {
-                    reject(err);
-                } else if (this.changes === 0) {
-                    reject(new Error('Device not found'));
-                } else {
-                    console.log(`Device ${mac} acknowledged`);
-                    resolve();
-                }
-            });
-        });
+            const result = this.db.prepare(query).run(new Date().toISOString(), mac);
+            
+            if (result.changes === 0) {
+                throw new Error('Device not found');
+            }
+            
+            console.log(`Device ${mac} acknowledged`);
+        } catch (error) {
+            console.error('Error acknowledging device:', error);
+            throw error;
+        }
     }
 
     async getAllDevices() {
-        return new Promise((resolve, reject) => {
+        try {
             const query = `
                 SELECT * FROM devices 
                 ORDER BY detected_at DESC
             `;
 
-            this.db.all(query, (err, rows) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    const devices = rows.map(row => ({
-                        ...row,
-                        is_wired: Boolean(row.is_wired),
-                        acknowledged: Boolean(row.acknowledged)
-                    }));
-                    resolve(devices);
-                }
-            });
-        });
+            const rows = this.db.prepare(query).all();
+            
+            const devices = rows.map(row => ({
+                ...row,
+                is_wired: Boolean(row.is_wired),
+                acknowledged: Boolean(row.acknowledged)
+            }));
+            
+            return devices;
+        } catch (error) {
+            console.error('Error getting all devices:', error);
+            throw error;
+        }
     }
 
     async getDeviceStats() {
-        return new Promise((resolve, reject) => {
+        try {
             const queries = {
                 total: 'SELECT COUNT(*) as count FROM devices',
                 unacknowledged: 'SELECT COUNT(*) as count FROM devices WHERE acknowledged = 0',
@@ -194,36 +173,27 @@ class DatabaseManager {
             };
 
             const stats = {};
-            let completed = 0;
-            const total = Object.keys(queries).length;
-
-            Object.entries(queries).forEach(([key, query]) => {
-                this.db.get(query, (err, row) => {
-                    if (err) {
-                        reject(err);
-                        return;
-                    }
-                    
-                    stats[key] = row.count;
-                    completed++;
-                    
-                    if (completed === total) {
-                        resolve(stats);
-                    }
-                });
-            });
-        });
+            
+            for (const [key, query] of Object.entries(queries)) {
+                const row = this.db.prepare(query).get();
+                stats[key] = row.count;
+            }
+            
+            return stats;
+        } catch (error) {
+            console.error('Error getting device stats:', error);
+            throw error;
+        }
     }
 
     close() {
         if (this.db) {
-            this.db.close((err) => {
-                if (err) {
-                    console.error('Error closing database:', err);
-                } else {
-                    console.log('Database connection closed');
-                }
-            });
+            try {
+                this.db.close();
+                console.log('Database connection closed');
+            } catch (error) {
+                console.error('Error closing database:', error);
+            }
         }
     }
 }

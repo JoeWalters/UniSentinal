@@ -12,132 +12,71 @@
         <header>
             <div class="header-content">
                 <h1><i class="fas fa-shield-alt"></i> UniSentinal</h1>
-                <p>UniFi Device Monitor</p>
+                <p>New Device Detection System</p>
             </div>
-            <div class="status-indicator" id="statusIndicator">
-                <span class="status-dot"></span>
-                <span class="status-text">Checking...</span>
+            <div class="header-right">
+                <div class="status-indicator" id="statusIndicator">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Checking...</span>
+                </div>
+                <div class="header-controls">
+                    <button id="darkModeToggle" class="btn-icon" title="Toggle Dark Mode">
+                        <i class="fas fa-moon"></i>
+                    </button>
+                    <button id="settingsBtn" class="btn-icon" title="Settings">
+                        <i class="fas fa-cog"></i>
+                    </button>
+                </div>
             </div>
-            <button id="darkModeToggle" class="btn-icon" title="Toggle Dark Mode">
-                <i class="fas fa-moon"></i>
-            </button>
-            <button id="settingsBtn" class="btn-icon" title="Settings">
-                <i class="fas fa-cog"></i>
-            </button>
         </header>
 
         <main>
             <div class="controls-section">
                 <div class="stats-grid">
                     <div class="stat-card">
-                        <i class="fas fa-exclamation-triangle"></i>
+                        <i class="fas fa-plus-circle"></i>
                         <div class="stat-info">
                             <span class="stat-number" id="unacknowledgedCount">-</span>
-                            <span class="stat-label">Unacknowledged</span>
-                        </div>
-                    </div>
-                    <div class="stat-card">
-                        <i class="fas fa-check-circle"></i>
-                        <div class="stat-info">
-                            <span class="stat-number" id="acknowledgedCount">-</span>
-                            <span class="stat-label">Acknowledged</span>
+                            <span class="stat-label">New Devices</span>
                         </div>
                     </div>
                     <div class="stat-card">
                         <i class="fas fa-calendar-day"></i>
                         <div class="stat-info">
                             <span class="stat-number" id="todayCount">-</span>
-                            <span class="stat-label">Today</span>
+                            <span class="stat-label">Detected Today</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <i class="fas fa-network-wired"></i>
+                        <div class="stat-info">
+                            <span class="stat-number" id="totalKnownCount">-</span>
+                            <span class="stat-label">Known Devices</span>
                         </div>
                     </div>
                 </div>
 
                 <div class="action-buttons">
                     <button id="scanBtn" class="btn btn-primary">
-                        <i class="fas fa-search"></i> Manual Scan
+                        <i class="fas fa-radar"></i> Scan Network
                     </button>
                     <button id="refreshBtn" class="btn btn-secondary">
                         <i class="fas fa-sync-alt"></i> Refresh
                     </button>
-                    <button id="acknowledgeAllBtn" class="btn btn-danger">
-                        <i class="fas fa-check-double"></i> Acknowledge All
-                    </button>
-                </div>
-
-                <!-- Connection Diagnostics Accordion -->
-                <div class="diagnostics-accordion">
-                    <button class="accordion-header" id="diagnosticsToggle">
-                        <i class="fas fa-network-wired"></i>
-                        <span>Connection Diagnostics</span>
-                        <i class="fas fa-chevron-down accordion-icon"></i>
-                    </button>
-                    
-                    <div class="accordion-content" id="diagnosticsContent">
-                        <div class="diagnostics-controls">
-                            <button id="testConnectionBtn" class="btn btn-info btn-small">
-                                <i class="fas fa-stethoscope"></i> Test Connection
-                            </button>
-                        </div>
-                        
-                        <div class="diagnostics-grid">
-                            <div class="diagnostic-card">
-                                <div class="diagnostic-header">
-                                    <i class="fas fa-plug diagnostic-icon" id="apiConnectionIcon"></i>
-                                    <span class="diagnostic-title">API Connection</span>
-                                </div>
-                                <div class="diagnostic-status" id="apiConnectionStatus">Click "Test Connection" to check</div>
-                                <div class="diagnostic-details" id="apiConnectionDetails"></div>
-                            </div>
-                            
-                            <div class="diagnostic-card">
-                                <div class="diagnostic-header">
-                                    <i class="fas fa-key diagnostic-icon" id="authStatusIcon"></i>
-                                    <span class="diagnostic-title">Authentication</span>
-                                </div>
-                                <div class="diagnostic-status" id="authStatus">Click "Test Connection" to check</div>
-                                <div class="diagnostic-details" id="authDetails"></div>
-                            </div>
-                            
-                            <div class="diagnostic-card">
-                                <div class="diagnostic-header">
-                                    <i class="fas fa-database diagnostic-icon" id="dataAccessIcon"></i>
-                                    <span class="diagnostic-title">Data Access</span>
-                                </div>
-                                <div class="diagnostic-status" id="dataAccessStatus">Click "Test Connection" to check</div>
-                                <div class="diagnostic-details" id="dataAccessDetails"></div>
-                            </div>
-                            
-                            <div class="diagnostic-card">
-                                <div class="diagnostic-header">
-                                    <i class="fas fa-heartbeat diagnostic-icon" id="controllerHealthIcon"></i>
-                                    <span class="diagnostic-title">Controller Health</span>
-                                </div>
-                                <div class="diagnostic-status" id="controllerHealthStatus">Click "Test Connection" to check</div>
-                                <div class="diagnostic-details" id="controllerHealthDetails"></div>
-                            </div>
-                        </div>
-                        
-                        <div class="connection-info" id="connectionInfo" style="display: none;">
-                            <h3>Connection Details</h3>
-                            <div class="info-grid" id="connectionDetails">
-                                <!-- Connection details will be populated here -->
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
 
             <div class="devices-section">
-                <h2>New Devices <span id="deviceCount" class="count-badge">0</span></h2>
+                <h2>Brand New Devices <span id="deviceCount" class="count-badge">0</span></h2>
                 
                 <div class="loading" id="loading" style="display: none;">
-                    <i class="fas fa-spinner fa-spin"></i> Loading devices...
+                    <i class="fas fa-spinner fa-spin"></i> Scanning for new devices...
                 </div>
 
                 <div class="no-devices" id="noDevices" style="display: none;">
-                    <i class="fas fa-check-circle"></i>
-                    <p>No unacknowledged devices found</p>
-                    <small>All devices have been reviewed</small>
+                    <i class="fas fa-shield-check"></i>
+                    <p>No brand new devices detected</p>
+                    <small>All devices are already known to your UniFi controller</small>
                 </div>
 
                 <div class="devices-grid" id="devicesGrid">
@@ -145,11 +84,73 @@
                 </div>
             </div>
 
+            <!-- Connection Diagnostics Accordion -->
+            <div class="diagnostics-accordion">
+                <button class="accordion-header" id="diagnosticsToggle">
+                    <i class="fas fa-network-wired"></i>
+                    <span>Connection Diagnostics</span>
+                    <i class="fas fa-chevron-down accordion-icon"></i>
+                </button>
+                
+                <div class="accordion-content" id="diagnosticsContent">
+                    <div class="diagnostics-controls">
+                        <button id="testConnectionBtn" class="btn btn-info btn-small">
+                            <i class="fas fa-stethoscope"></i> Test Connection
+                        </button>
+                    </div>
+                    
+                    <div class="diagnostics-grid">
+                        <div class="diagnostic-card">
+                            <div class="diagnostic-header">
+                                <i class="fas fa-plug diagnostic-icon" id="apiConnectionIcon"></i>
+                                <span class="diagnostic-title">API Connection</span>
+                            </div>
+                            <div class="diagnostic-status" id="apiConnectionStatus">Click "Test Connection" to check</div>
+                            <div class="diagnostic-details" id="apiConnectionDetails"></div>
+                        </div>
+                        
+                        <div class="diagnostic-card">
+                            <div class="diagnostic-header">
+                                <i class="fas fa-key diagnostic-icon" id="authStatusIcon"></i>
+                                <span class="diagnostic-title">Authentication</span>
+                            </div>
+                            <div class="diagnostic-status" id="authStatus">Click "Test Connection" to check</div>
+                            <div class="diagnostic-details" id="authDetails"></div>
+                        </div>
+                        
+                        <div class="diagnostic-card">
+                            <div class="diagnostic-header">
+                                <i class="fas fa-database diagnostic-icon" id="dataAccessIcon"></i>
+                                <span class="diagnostic-title">Data Access</span>
+                            </div>
+                            <div class="diagnostic-status" id="dataAccessStatus">Click "Test Connection" to check</div>
+                            <div class="diagnostic-details" id="dataAccessDetails"></div>
+                        </div>
+                        
+                        <div class="diagnostic-card">
+                            <div class="diagnostic-header">
+                                <i class="fas fa-heartbeat diagnostic-icon" id="controllerHealthIcon"></i>
+                                <span class="diagnostic-title">Controller Health</span>
+                            </div>
+                            <div class="diagnostic-status" id="controllerHealthStatus">Click "Test Connection" to check</div>
+                            <div class="diagnostic-details" id="controllerHealthDetails"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="connection-info" id="connectionInfo" style="display: none;">
+                        <h3>Connection Details</h3>
+                        <div class="info-grid" id="connectionDetails">
+                            <!-- Connection details will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
         </main>
 
         <footer>
-            <p>Last updated: <span id="lastUpdated">-</span></p>
-            <p>Auto-refresh every 30 seconds</p>
+            <p>Last scan: <span id="lastUpdated">-</span></p>
+            <p>Monitoring for new devices every 30 seconds</p>
         </footer>
     </div>
 
@@ -177,6 +178,10 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h3><i class="fas fa-cog"></i> Settings</h3>
+                <div class="config-status" id="configStatus">
+                    <span class="config-indicator" id="configIndicator"></span>
+                    <span class="config-text" id="configText">Checking...</span>
+                </div>
                 <button class="close-btn" id="closeSettingsModal">
                     <i class="fas fa-times"></i>
                 </button>
@@ -187,15 +192,15 @@
                     <div class="settings-grid">
                         <div class="setting-item">
                             <label for="unifiHost">Controller Host/IP</label>
-                            <input type="text" id="unifiHost" placeholder="192.168.1.1">
+                            <input type="text" id="unifiHost" value="192.168.1.1" placeholder="192.168.1.1">
                         </div>
                         <div class="setting-item">
                             <label for="unifiPort">Port</label>
-                            <input type="number" id="unifiPort" placeholder="443">
+                            <input type="number" id="unifiPort" value="443" placeholder="443">
                         </div>
                         <div class="setting-item">
                             <label for="unifiUsername">Username</label>
-                            <input type="text" id="unifiUsername" placeholder="admin">
+                            <input type="text" id="unifiUsername" value="admin" placeholder="admin">
                         </div>
                         <div class="setting-item">
                             <label for="unifiPassword">Password</label>
@@ -203,7 +208,7 @@
                         </div>
                         <div class="setting-item">
                             <label for="unifiSite">Site Name</label>
-                            <input type="text" id="unifiSite" placeholder="default">
+                            <input type="text" id="unifiSite" value="default" placeholder="default">
                         </div>
                     </div>
                 </div>
@@ -213,11 +218,11 @@
                     <div class="settings-grid">
                         <div class="setting-item">
                             <label for="appPort">Server Port</label>
-                            <input type="number" id="appPort" placeholder="3000">
+                            <input type="number" id="appPort" value="3000" placeholder="3000">
                         </div>
                         <div class="setting-item">
                             <label for="scanInterval">Scan Interval (seconds)</label>
-                            <input type="number" id="scanInterval" placeholder="30" min="10" max="300">
+                            <input type="number" id="scanInterval" value="30" placeholder="30" min="10" max="300">
                         </div>
                     </div>
                 </div>

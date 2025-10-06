@@ -81,6 +81,23 @@ app.get('/api/status', async (req, res) => {
     }
 });
 
+app.get('/api/stats', async (req, res) => {
+    try {
+        const allKnownDevices = await unifiController.getAllKnownDevices();
+        const dbStats = await dbManager.getDeviceStats();
+        
+        res.json({
+            totalKnown: allKnownDevices.size,
+            newDevices: dbStats.unacknowledged,
+            acknowledgedDevices: dbStats.acknowledged,
+            detectedToday: dbStats.today
+        });
+    } catch (error) {
+        logger.error('Error getting stats:', error.message);
+        res.status(500).json({ error: 'Failed to get stats' });
+    }
+});
+
 app.get('/api/diagnostics', async (req, res) => {
     try {
         logger.info('Running diagnostics check');
@@ -115,10 +132,13 @@ app.post('/api/settings', (req, res) => {
         const settings = req.body;
         const envPath = path.join(__dirname, '.env');
         
-        // Read current .env file
+        // Read current .env file or create new content
         let envContent = '';
         if (fs.existsSync(envPath)) {
             envContent = fs.readFileSync(envPath, 'utf8');
+        } else {
+            // Create initial .env file with header comment
+            envContent = '# UniFi Sentinel Configuration\n# Generated automatically from settings UI\n\n';
         }
 
         // Update or add settings
@@ -130,16 +150,31 @@ app.post('/api/settings', (req, res) => {
                 if (pattern.test(envContent)) {
                     envContent = envContent.replace(pattern, newLine);
                 } else {
-                    envContent += `\n${newLine}`;
+                    envContent += `${newLine}\n`;
                 }
             }
         });
 
         // Write updated .env file
-        fs.writeFileSync(envPath, envContent.trim() + '\n');
-        logger.info('Settings updated successfully');
+        fs.writeFileSync(envPath, envContent);
         
-        res.json({ success: true, message: 'Settings saved successfully' });
+        // Update process.env with new values
+        Object.keys(settings).forEach(key => {
+            if (settings[key] !== undefined && settings[key] !== '') {
+                process.env[key] = settings[key];
+            }
+        });
+        
+        // Update UniFi controller configuration
+        unifiController.updateConfiguration();
+        
+        logger.info('Settings updated successfully and .env file created/updated');
+        
+        res.json({ 
+            success: true, 
+            message: '.env file created/updated successfully. Configuration is now active.',
+            envFileCreated: !fs.existsSync(envPath)
+        });
     } catch (error) {
         logger.error('Error saving settings:', error.message);
         res.status(500).json({ error: 'Failed to save settings' });
@@ -151,18 +186,42 @@ app.post('/api/test-settings', async (req, res) => {
         const settings = req.body;
         logger.info('Testing settings configuration');
         
-        // Create temporary UniFi controller with test settings
-        const testController = new (require('./src/controllers/UnifiController'))();
-        testController.baseUrl = `https://${settings.UNIFI_HOST}:${settings.UNIFI_PORT}`;
-        testController.username = settings.UNIFI_USERNAME;
-        testController.password = settings.UNIFI_PASSWORD;
-        testController.site = settings.UNIFI_SITE || 'default';
+        // Temporarily set environment variables for testing
+        const originalEnv = {
+            UNIFI_HOST: process.env.UNIFI_HOST,
+            UNIFI_PORT: process.env.UNIFI_PORT,
+            UNIFI_USERNAME: process.env.UNIFI_USERNAME,
+            UNIFI_PASSWORD: process.env.UNIFI_PASSWORD,
+            UNIFI_SITE: process.env.UNIFI_SITE
+        };
         
-        // Test connection
-        await testController.login();
+        // Set test environment variables
+        process.env.UNIFI_HOST = settings.UNIFI_HOST;
+        process.env.UNIFI_PORT = settings.UNIFI_PORT;
+        process.env.UNIFI_USERNAME = settings.UNIFI_USERNAME;
+        process.env.UNIFI_PASSWORD = settings.UNIFI_PASSWORD;
+        process.env.UNIFI_SITE = settings.UNIFI_SITE || 'default';
         
-        logger.info('Settings test passed');
-        res.json({ success: true, message: 'Settings test successful' });
+        try {
+            // Create temporary UniFi controller with test settings
+            const testController = new (require('./src/controllers/UnifiController'))();
+            testController.updateConfiguration(); // This will read from the temp env vars
+            
+            // Test connection
+            await testController.login();
+            
+            logger.info('Settings test passed');
+            res.json({ success: true, message: 'Settings test successful' });
+        } finally {
+            // Restore original environment variables
+            Object.keys(originalEnv).forEach(key => {
+                if (originalEnv[key] !== undefined) {
+                    process.env[key] = originalEnv[key];
+                } else {
+                    delete process.env[key];
+                }
+            });
+        }
     } catch (error) {
         logger.warn('Settings test failed:', error.message);
         res.json({ success: false, error: error.message });
@@ -187,27 +246,36 @@ async function initialize() {
         logger.info('Initializing UniFi Sentinel...');
         await dbManager.initialize();
         
-        // Initialize UniFi controller device tracking baseline
-        await unifiController.initializeDeviceTracking();
-        
-        // Scan for devices every 30 seconds (or configured interval)
-        const scanInterval = parseInt(process.env.SCAN_INTERVAL) * 1000 || 30000;
-        setInterval(async () => {
-            try {
-                const newDevices = await unifiController.scanForNewDevices();
-                if (newDevices.length > 0) {
-                    await dbManager.addNewDevices(newDevices);
-                    logger.info(`Periodic scan found ${newDevices.length} new device(s)`);
+        // Check if UniFi controller is configured
+        if (unifiController.isConfigured()) {
+            // Initialize UniFi controller device tracking baseline
+            await unifiController.initializeDeviceTracking();
+            
+            // Scan for devices every 30 seconds (or configured interval)
+            const scanInterval = parseInt(process.env.SCAN_INTERVAL) * 1000 || 30000;
+            setInterval(async () => {
+                try {
+                    if (unifiController.isConfigured()) {
+                        const newDevices = await unifiController.scanForNewDevices();
+                        if (newDevices.length > 0) {
+                            await dbManager.addNewDevices(newDevices);
+                            logger.info(`Periodic scan found ${newDevices.length} new device(s)`);
+                        }
+                    }
+                } catch (error) {
+                    logger.error('Error in periodic scan:', error.message);
                 }
-            } catch (error) {
-                logger.error('Error in periodic scan:', error.message);
-            }
-        }, scanInterval);
-        
-        logger.info(`UniFi Sentinel initialized successfully (scan interval: ${scanInterval/1000}s)`);
+            }, scanInterval);
+            
+            logger.info(`UniFi Sentinel initialized successfully (scan interval: ${scanInterval/1000}s)`);
+        } else {
+            logger.warn('UniFi controller not configured. Please configure in settings to enable device scanning.');
+            logger.info('UniFi Sentinel started in configuration mode - ready to accept settings.');
+        }
     } catch (error) {
         logger.error('Failed to initialize:', error.message);
-        process.exit(1);
+        // Don't exit - allow the app to start for configuration
+        logger.info('Starting in configuration mode due to initialization error.');
     }
 }
 

@@ -18,7 +18,7 @@ class UniFiSentinel {
         // Button events
         document.getElementById('scanBtn').addEventListener('click', () => this.manualScan());
         document.getElementById('refreshBtn').addEventListener('click', () => this.loadDevices());
-        document.getElementById('acknowledgeAllBtn').addEventListener('click', () => this.acknowledgeAll());
+        // Removed acknowledgeAll button
         document.getElementById('testConnectionBtn').addEventListener('click', () => this.runDiagnostics());
         document.getElementById('darkModeToggle').addEventListener('click', () => this.toggleDarkMode());
         document.getElementById('settingsBtn').addEventListener('click', () => this.showSettingsModal());
@@ -114,29 +114,7 @@ class UniFiSentinel {
         }
     }
 
-    async acknowledgeAll() {
-        if (this.devices.length === 0) {
-            this.showNotification('No devices to acknowledge', 'info');
-            return;
-        }
-
-        if (!confirm(`Are you sure you want to acknowledge all ${this.devices.length} device(s)?`)) {
-            return;
-        }
-
-        const promises = this.devices.map(device => 
-            fetch(`/api/devices/${device.mac}/acknowledge`, { method: 'POST' })
-        );
-
-        try {
-            await Promise.all(promises);
-            this.showNotification(`All ${this.devices.length} device(s) acknowledged`, 'success');
-            await this.loadDevices();
-        } catch (error) {
-            console.error('Error acknowledging all devices:', error);
-            this.showError('Failed to acknowledge all devices');
-        }
-    }
+    // Removed acknowledgeAll function - focusing on individual device review
 
     async checkStatus() {
         try {
@@ -144,9 +122,49 @@ class UniFiSentinel {
             const status = await response.json();
             
             this.updateStatusIndicator(status.connected, status.error);
+            
+            // Check if the error indicates missing configuration
+            if (status.error && status.error.includes('not configured')) {
+                this.showConfigurationPrompt();
+            } else if (status.connected) {
+                // Connection is successful, hide configuration prompt
+                this.hideConfigurationPrompt();
+            }
         } catch (error) {
             console.error('Error checking status:', error);
             this.updateStatusIndicator(false, 'Connection check failed');
+        }
+    }
+
+    showConfigurationPrompt() {
+        const noDevices = document.getElementById('noDevices');
+        if (noDevices) {
+            noDevices.style.display = 'block';
+            noDevices.innerHTML = `
+                <i class="fas fa-cog"></i>
+                <p>UniFi Controller Not Configured</p>
+                <small>Use the settings button in the top right to configure your connection</small>
+            `;
+        }
+    }
+
+    hideConfigurationPrompt() {
+        const noDevices = document.getElementById('noDevices');
+        if (noDevices) {
+            noDevices.style.display = 'none';
+            noDevices.innerHTML = ''; // Clear the content
+        }
+    }
+
+    showNoDevicesMessage() {
+        const noDevices = document.getElementById('noDevices');
+        if (noDevices) {
+            noDevices.style.display = 'block';
+            noDevices.innerHTML = `
+                <i class="fas fa-shield-check"></i>
+                <p>No brand new devices detected</p>
+                <small>All devices are already known to your UniFi controller</small>
+            `;
         }
     }
 
@@ -159,7 +177,9 @@ class UniFiSentinel {
 
         if (this.devices.length === 0) {
             grid.style.display = 'none';
-            noDevices.style.display = 'block';
+            // Only show the "no devices" message if we're not in configuration mode
+            // The configuration prompt will be shown by checkStatus() if needed
+            this.showNoDevicesMessage();
             return;
         }
 
@@ -358,11 +378,8 @@ class UniFiSentinel {
 
     async updateStats() {
         try {
-            // For now, calculate stats from current devices
-            // You could add an API endpoint for comprehensive stats later
             const stats = {
-                unacknowledged: this.devices.length,
-                acknowledged: 0, // Would need API call to get this
+                newDevices: this.devices.length,
                 today: this.devices.filter(device => {
                     const today = new Date().toDateString();
                     const deviceDate = new Date(device.detected_at).toDateString();
@@ -370,9 +387,20 @@ class UniFiSentinel {
                 }).length
             };
 
-            document.getElementById('unacknowledgedCount').textContent = stats.unacknowledged;
-            document.getElementById('acknowledgedCount').textContent = stats.acknowledged;
+            document.getElementById('unacknowledgedCount').textContent = stats.newDevices;
             document.getElementById('todayCount').textContent = stats.today;
+            
+            // Get total known devices from server
+            try {
+                const response = await fetch('/api/stats');
+                if (response.ok) {
+                    const serverStats = await response.json();
+                    document.getElementById('totalKnownCount').textContent = serverStats.totalKnown || '-';
+                }
+            } catch (error) {
+                console.log('Could not fetch server stats:', error);
+                document.getElementById('totalKnownCount').textContent = '-';
+            }
         } catch (error) {
             console.error('Error updating stats:', error);
         }
@@ -654,6 +682,7 @@ class UniFiSentinel {
             if (response.ok) {
                 const settings = await response.json();
                 this.populateSettingsForm(settings);
+                await this.updateConfigurationStatus(settings);
             }
         } catch (error) {
             console.error('Error loading settings:', error);
@@ -665,18 +694,62 @@ class UniFiSentinel {
         modal.style.display = 'block';
     }
 
+    async updateConfigurationStatus(settings, testSuccessful = false) {
+        const indicator = document.getElementById('configIndicator');
+        const text = document.getElementById('configText');
+        
+        // If we just had a successful test, mark as configured
+        if (testSuccessful) {
+            indicator.className = 'config-indicator configured';
+            text.textContent = 'Configured';
+            return;
+        }
+        
+        // For saved settings, check if we have the basic required fields
+        // If we do, check the server status to see if it's actually configured
+        const hasBasicConfig = settings.UNIFI_HOST && settings.UNIFI_PORT && settings.UNIFI_USERNAME;
+        
+        if (hasBasicConfig) {
+            try {
+                const response = await fetch('/api/status');
+                const status = await response.json();
+                
+                if (status.connected) {
+                    indicator.className = 'config-indicator configured';
+                    text.textContent = 'Configured';
+                } else if (status.error && status.error.includes('not configured')) {
+                    indicator.className = 'config-indicator unconfigured';
+                    text.textContent = 'Not Configured';
+                } else {
+                    // Has config but connection failed
+                    indicator.className = 'config-indicator configured';
+                    text.textContent = 'Configured (Connection Issue)';
+                }
+            } catch (error) {
+                // Assume configured if we have basic settings but can't check status
+                indicator.className = 'config-indicator configured';
+                text.textContent = 'Configured';
+            }
+        } else {
+            indicator.className = 'config-indicator unconfigured';
+            text.textContent = 'Not Configured';
+        }
+    }
+
     closeSettingsModal() {
         document.getElementById('settingsModal').style.display = 'none';
     }
 
     populateSettingsForm(settings) {
-        document.getElementById('unifiHost').value = settings.UNIFI_HOST || '';
-        document.getElementById('unifiPort').value = settings.UNIFI_PORT || '';
-        document.getElementById('unifiUsername').value = settings.UNIFI_USERNAME || '';
-        document.getElementById('unifiPassword').value = ''; // Don't populate password for security
-        document.getElementById('unifiSite').value = settings.UNIFI_SITE || '';
-        document.getElementById('appPort').value = settings.PORT || '';
-        document.getElementById('scanInterval').value = settings.SCAN_INTERVAL || '';
+        // Only override defaults if actual values exist
+        if (settings.UNIFI_HOST) document.getElementById('unifiHost').value = settings.UNIFI_HOST;
+        if (settings.UNIFI_PORT) document.getElementById('unifiPort').value = settings.UNIFI_PORT;
+        if (settings.UNIFI_USERNAME) document.getElementById('unifiUsername').value = settings.UNIFI_USERNAME;
+        // Don't populate password for security
+        document.getElementById('unifiPassword').value = '';
+        if (settings.UNIFI_SITE) document.getElementById('unifiSite').value = settings.UNIFI_SITE;
+        if (settings.PORT) document.getElementById('appPort').value = settings.PORT;
+        if (settings.SCAN_INTERVAL) document.getElementById('scanInterval').value = settings.SCAN_INTERVAL;
     }
 
     async saveSettings() {
@@ -707,8 +780,19 @@ class UniFiSentinel {
             });
 
             if (response.ok) {
-                this.showNotification('Settings saved successfully! Please restart the application for changes to take effect.', 'success');
+                const result = await response.json();
+                if (result.envFileCreated) {
+                    this.showNotification('Configuration saved! .env file created successfully. Settings are now active.', 'success');
+                } else {
+                    this.showNotification('Settings updated successfully! Configuration is now active.', 'success');
+                }
                 this.closeSettingsModal();
+                
+                // Refresh status and try loading devices
+                setTimeout(() => {
+                    this.checkStatus();
+                    this.loadDevices();
+                }, 1000);
             } else {
                 throw new Error('Failed to save settings');
             }
@@ -725,11 +809,21 @@ class UniFiSentinel {
         testBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing...';
         testBtn.disabled = true;
 
+        const passwordField = document.getElementById('unifiPassword').value.trim();
+        
+        // If password field is empty, we need to check if there's a saved password
+        if (!passwordField) {
+            this.showNotification('Please enter your password to test the connection', 'warning');
+            testBtn.innerHTML = originalText;
+            testBtn.disabled = false;
+            return;
+        }
+
         const settings = {
             UNIFI_HOST: document.getElementById('unifiHost').value.trim(),
             UNIFI_PORT: document.getElementById('unifiPort').value.trim(),
             UNIFI_USERNAME: document.getElementById('unifiUsername').value.trim(),
-            UNIFI_PASSWORD: document.getElementById('unifiPassword').value.trim(),
+            UNIFI_PASSWORD: passwordField,
             UNIFI_SITE: document.getElementById('unifiSite').value.trim() || 'default'
         };
 
@@ -746,6 +840,8 @@ class UniFiSentinel {
             
             if (result.success) {
                 this.showNotification('Settings test successful!', 'success');
+                // Update configuration status to show it's working
+                await this.updateConfigurationStatus(settings, true);
             } else {
                 this.showNotification('Settings test failed: ' + (result.error || 'Unknown error'), 'error');
             }
@@ -817,5 +913,5 @@ class UniFiSentinel {
 
 // Initialize the application when the DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    new UniFiSentinel();
+    window.app = new UniFiSentinel();
 });
