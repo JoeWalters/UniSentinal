@@ -1,21 +1,24 @@
 # Use the official Node.js 18 runtime as the base image
 FROM node:18-alpine
 
+# Install bash for init script
+RUN apk add --no-cache bash
+
 # Set the working directory in the container
 WORKDIR /app
 
 # Copy package.json and package-lock.json (if available)
 COPY package*.json ./
 
+# Copy and setup init script early
+COPY docker-init.sh /docker-init.sh
+RUN chmod +x /docker-init.sh && ls -la /docker-init.sh
+
 # Install dependencies
 RUN npm ci --only=production
 
 # Copy the rest of the application code
 COPY . .
-
-# Copy and setup init script
-COPY docker-init.sh /docker-init.sh
-RUN chmod +x /docker-init.sh
 
 # Create a non-root user to run the application
 RUN addgroup -g 1001 -S nodejs
