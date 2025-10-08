@@ -13,9 +13,16 @@ RUN npm ci --only=production
 # Copy the rest of the application code
 COPY . .
 
+# Copy and setup init script
+COPY docker-init.sh /docker-init.sh
+RUN chmod +x /docker-init.sh
+
 # Create a non-root user to run the application
 RUN addgroup -g 1001 -S nodejs
 RUN adduser -S nodejs -u 1001
+
+# Create config directory for persistent data
+RUN mkdir -p /config && chown -R nodejs:nodejs /config
 
 # Change ownership of the app directory to the nodejs user
 RUN chown -R nodejs:nodejs /app
@@ -42,5 +49,6 @@ ENV BUILD_DATE=$BUILD_DATE
 ENV VERSION=$VERSION
 ENV VCS_REF=$VCS_REF
 
-# Command to run the application
+# Use init script as entrypoint to handle config setup
+ENTRYPOINT ["/docker-init.sh"]
 CMD ["npm", "start"]

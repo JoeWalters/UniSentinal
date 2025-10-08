@@ -3,7 +3,8 @@ const path = require('path');
 
 class DatabaseManager {
     constructor() {
-        this.dbPath = process.env.DB_PATH || './data/devices.db';
+        const configDir = process.env.CONFIG_DIR || '/config';
+        this.dbPath = process.env.DB_PATH || path.join(configDir, 'devices.db');
         this.db = null;
     }
 

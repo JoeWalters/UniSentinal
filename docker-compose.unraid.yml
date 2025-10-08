@@ -1,0 +1,47 @@
+version: '3.8'
+
+# Docker Compose for Unraid
+# This example shows how to run UniSentinal on Unraid with proper volume mounting
+
+services:
+  unisentinal:
+    image: joewalters/unisentinal:latest
+    container_name: UniSentinal
+    ports:
+      - "3000:3000"
+    environment:
+      # UniFi Controller Settings - REQUIRED
+      - UNIFI_HOST=192.168.0.1          # Your UniFi Dream Machine IP
+      - UNIFI_USERNAME=admin            # Your UniFi admin username
+      - UNIFI_PASSWORD=your_password    # Your UniFi admin password
+      
+      # Optional Settings
+      - UNIFI_PORT=443                  # Default: 443
+      - UNIFI_SITE=default              # Default: default
+      - PORT=3000                       # Default: 3000
+      - NODE_ENV=production             # Default: production
+      - CONFIG_DIR=/config              # Default: /config
+      
+    volumes:
+      # Mount Unraid appdata directory to container's config directory
+      # This will contain: .env file, devices.db, and any future config files
+      - /mnt/user/appdata/unisentinal:/config
+      
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+# For Unraid Community Applications template:
+# Repository: joewalters/unisentinal:latest
+# Network Type: Bridge
+# Port Mapping: 3000:3000
+# Volume Mapping: /mnt/user/appdata/unisentinal:/config
+# Required Environment Variables:
+#   - UNIFI_HOST (your Dream Machine IP)
+#   - UNIFI_USERNAME (admin username)  
+#   - UNIFI_PASSWORD (admin password)

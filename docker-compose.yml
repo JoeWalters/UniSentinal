@@ -8,9 +8,10 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
+      - UNIFI_HOST=192.168.0.1
     volumes:
-      # Mount a volume for the database to persist data
-      - ./data:/app/data
+      # Mount a volume for all persistent data (database, settings, logs)
+      - ./config:/config
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/version"]

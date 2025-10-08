@@ -3,7 +3,18 @@ const cors = require('cors');
 const helmet = require('helmet');
 const path = require('path');
 const fs = require('fs');
-require('dotenv').config();
+
+// Setup config directory for Unraid mounting
+const CONFIG_DIR = process.env.CONFIG_DIR || '/config';
+const ENV_PATH = path.join(CONFIG_DIR, '.env');
+
+// Ensure config directory exists
+if (!fs.existsSync(CONFIG_DIR)) {
+    fs.mkdirSync(CONFIG_DIR, { recursive: true });
+}
+
+// Load environment from config directory
+require('dotenv').config({ path: ENV_PATH });
 
 const UnifiController = require('./src/controllers/UnifiController');
 const DatabaseManager = require('./src/database/DatabaseManager');
@@ -164,7 +175,7 @@ app.get('/api/settings', (req, res) => {
 app.post('/api/settings', (req, res) => {
     try {
         const settings = req.body;
-        const envPath = path.join(__dirname, '.env');
+        const envPath = ENV_PATH;
         
         // Read current .env file or create new content
         let envContent = '';

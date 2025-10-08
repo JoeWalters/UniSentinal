@@ -8,8 +8,11 @@ A web application that monitors your UniFi Dream Machine Special Edition for new
 - **Acknowledgment System**: Mark devices as reviewed so they don't appear again
 - **Detailed Device Information**: View comprehensive details about each detected device
 - **Modern Web Interface**: Clean, responsive design with real-time updates
+- **Web-Based Configuration**: Easy setup through the web interface - no file editing required
 - **Persistent Storage**: SQLite database to track devices and acknowledgment status
+- **Docker/Unraid Ready**: Single volume mount for all persistent data
 - **Auto-refresh**: Continuous monitoring with configurable scan intervals
+- **Version Tracking**: Built-in version display and update tracking
 
 ## Prerequisites
 
@@ -31,8 +34,8 @@ A web application that monitors your UniFi Dream Machine Special Edition for new
    docker run -d \
      --name unisentinal \
      -p 3000:3000 \
-     -v $(pwd)/data:/app/data \
-     -e UNIFI_HOST=192.168.1.1 \
+     -v $(pwd)/config:/config \
+     -e UNIFI_HOST=192.168.0.1 \
      -e UNIFI_USERNAME=admin \
      -e UNIFI_PASSWORD=your_password \
      joewalters/unisentinal:latest
@@ -44,7 +47,7 @@ A web application that monitors your UniFi Dream Machine Special Edition for new
    curl -O https://raw.githubusercontent.com/JoeWalters/UniSentinal/main/docker-compose.yml
    
    # Set environment variables
-   export UNIFI_HOST=192.168.1.1
+   export UNIFI_HOST=192.168.0.1
    export UNIFI_USERNAME=admin
    export UNIFI_PASSWORD=your_password
    
@@ -73,7 +76,7 @@ A web application that monitors your UniFi Dream Machine Special Edition for new
    Edit the `.env` file with your UniFi controller details:
    ```env
    # UniFi Controller Configuration
-   UNIFI_HOST=192.168.1.1          # Your Dream Machine IP address
+   UNIFI_HOST=192.168.0.1          # Your Dream Machine IP address
    UNIFI_PORT=443                  # Usually 443 for HTTPS
    UNIFI_USERNAME=admin            # Your UniFi admin username
    UNIFI_PASSWORD=your_password    # Your UniFi admin password
@@ -83,8 +86,13 @@ A web application that monitors your UniFi Dream Machine Special Edition for new
    PORT=3000                       # Port for the web interface
    NODE_ENV=development
    
-   # Database
-   DB_PATH=./data/devices.db       # SQLite database location
+   # Data Storage Configuration
+   # CONFIG_DIR is the base directory for all persistent data (settings, database, logs)
+   # This should be mounted as a volume in Docker/Unraid
+   CONFIG_DIR=/config
+   
+   # Database path (relative to CONFIG_DIR if not absolute)
+   # DB_PATH=/config/devices.db  # Will default to CONFIG_DIR/devices.db if not specified
    ```
 
 ## Usage
@@ -103,6 +111,8 @@ A web application that monitors your UniFi Dream Machine Special Edition for new
    Open your browser and navigate to `http://localhost:3000`
 
 3. **Initial Setup**:
+   - **Web Configuration**: Use the settings button (⚙️) in the top-right to configure your UniFi controller connection
+   - **Environment Variables**: Or set UNIFI_HOST, UNIFI_USERNAME, and UNIFI_PASSWORD environment variables
    - The application will automatically connect to your UniFi controller
    - It will establish a baseline of existing devices
    - New devices will be detected and added to the monitoring list
@@ -136,7 +146,11 @@ For each device, the system tracks:
 
 ### Quick Start
 ```bash
+# Basic run (data will be lost when container is removed)
 docker run -p 3000:3000 joewalters/unisentinal:latest
+
+# With persistent data
+docker run -d -p 3000:3000 -v ./config:/config joewalters/unisentinal:latest
 ```
 
 ### Available Tags
@@ -149,7 +163,7 @@ Images are automatically built and published to Docker Hub: https://hub.docker.c
 ### Environment Variables for Docker
 ```bash
 # Required
-UNIFI_HOST=192.168.1.1          # Your UniFi controller IP
+UNIFI_HOST=192.168.0.1          # Your UniFi controller IP
 UNIFI_USERNAME=admin            # UniFi admin username  
 UNIFI_PASSWORD=your_password    # UniFi admin password
 
@@ -158,6 +172,7 @@ UNIFI_PORT=443                  # Default: 443
 UNIFI_SITE=default              # Default: default
 PORT=3000                       # Default: 3000
 NODE_ENV=production             # Default: production
+CONFIG_DIR=/config              # Default: /config (persistent data directory)
 ```
 
 ### Full Docker Run Example
@@ -165,12 +180,44 @@ NODE_ENV=production             # Default: production
 docker run -d \
   --name unisentinal \
   -p 3000:3000 \
-  -v $(pwd)/data:/app/data \
-  -e UNIFI_HOST=192.168.1.1 \
+  -v $(pwd)/config:/config \
+  -e UNIFI_HOST=192.168.0.1 \
   -e UNIFI_USERNAME=admin \
   -e UNIFI_PASSWORD=your_password \
   joewalters/unisentinal:latest
 ```
+
+### Unraid Setup
+For Unraid users, all persistent data (database, settings, logs) is stored in `/config`:
+
+**Community Applications Template:**
+- Repository: `joewalters/unisentinal:latest`
+- Network Type: `Bridge`
+- Port: `3000:3000`  
+- Volume: `/mnt/user/appdata/unisentinal:/config`
+- Required Variables:
+  - `UNIFI_HOST`: Your Dream Machine IP (e.g., `192.168.0.1`)
+  - `UNIFI_USERNAME`: Admin username
+  - `UNIFI_PASSWORD`: Admin password
+
+**Manual Unraid Docker Command:**
+```bash
+docker run -d \
+  --name=UniSentinal \
+  -p 3000:3000 \
+  -v /mnt/user/appdata/unisentinal:/config \
+  -e UNIFI_HOST=192.168.0.1 \
+  -e UNIFI_USERNAME=admin \
+  -e UNIFI_PASSWORD=your_password \
+  --restart=unless-stopped \
+  joewalters/unisentinal:latest
+```
+
+The `/mnt/user/appdata/unisentinal` directory will contain:
+- `.env` - Active configuration file (auto-generated from web settings)
+- `.env.example` - Template/reference file with all available options
+- `devices.db` - SQLite database with device tracking data
+- Future config files and logs
 
 ### Building from Source
 ```bash
@@ -180,7 +227,7 @@ cd UniSentinal
 docker build -t unisentinal .
 
 # Run your custom build
-docker run -d --name unisentinal -p 3000:3000 unisentinal
+docker run -d --name unisentinal -p 3000:3000 -v ./config:/config unisentinal
 ```
 
 ### Version Information
@@ -197,6 +244,9 @@ The application provides a REST API for integration:
 - `POST /api/devices/:mac/acknowledge` - Acknowledge a specific device
 - `GET /api/scan` - Trigger manual device scan
 - `GET /api/status` - Check UniFi controller connection status
+- `GET /api/version` - Get application version and build information
+- `GET /api/settings` - Get current configuration settings
+- `POST /api/settings` - Update configuration settings
 
 ## File Structure
 
@@ -205,8 +255,10 @@ UniSentinal/
 ├── server.js                      # Main Express server
 ├── package.json                   # Dependencies and scripts
 ├── .env                          # Environment configuration (create from .env.example)
-├── data/                         # SQLite database storage
-│   └── devices.db               # Automatically created
+├── config/                       # Persistent data directory (Docker volume mount)
+│   ├── .env                     # Active configuration file (auto-generated)
+│   ├── .env.example             # Template file with all available options
+│   └── devices.db               # SQLite database (automatically created)
 ├── public/                       # Frontend files
 │   ├── index.html              # Main web interface
 │   ├── styles.css              # Styling
@@ -217,6 +269,38 @@ UniSentinal/
     └── database/
         └── DatabaseManager.js   # SQLite database operations
 ```
+
+## Configuration
+
+### Web-Based Configuration
+The easiest way to configure UniSentinal is through the web interface:
+1. Access the web interface at `http://localhost:3000`
+2. Click the settings button (⚙️) in the top-right corner
+3. Enter your UniFi controller details:
+   - **Host**: Your Dream Machine IP (e.g., `192.168.0.1`)
+   - **Username**: Admin username
+   - **Password**: Admin password
+   - **Port**: Usually `443` (HTTPS)
+   - **Site**: Usually `default`
+4. Click "Test Settings" to verify connection
+5. Click "Save Settings" to apply
+
+Settings are automatically saved to the configuration file and persist between restarts.
+
+### Environment Variables
+You can also configure via environment variables (useful for Docker):
+- `UNIFI_HOST` - UniFi controller IP address
+- `UNIFI_USERNAME` - Admin username  
+- `UNIFI_PASSWORD` - Admin password
+- `UNIFI_PORT` - Controller port (default: 443)
+- `UNIFI_SITE` - Site name (default: default)
+- `PORT` - Web interface port (default: 3000)
+- `CONFIG_DIR` - Data directory (default: /config)
+
+### Configuration Priority
+1. **Environment Variables** (highest priority)
+2. **Web Interface Settings** (saved to .env file)
+3. **Default Values** (lowest priority)
 
 ## Configuration Options
 
@@ -230,8 +314,11 @@ setInterval(async () => {
 }, 30000);
 ```
 
-### Database Location
-The SQLite database is stored in `./data/devices.db` by default. Change the `DB_PATH` environment variable to use a different location.
+### Data Storage Location
+All persistent data (database, settings) is stored in the `/config` directory by default. This makes it easy to mount as a volume in Docker/Unraid:
+- **Database**: `/config/devices.db` 
+- **Settings**: `/config/.env`
+- **Custom Path**: Set `CONFIG_DIR` environment variable to change the base directory
 
 ## Troubleshooting
 
@@ -256,8 +343,9 @@ The SQLite database is stored in `./data/devices.db` by default. Change the `DB_
    - Or stop any other application using port 3000
 
 2. **Database Errors**:
-   - Ensure the `data/` directory exists and is writable
-   - Delete `data/devices.db` to reset the database
+   - Ensure the `/config/` directory exists and is writable
+   - Delete `/config/devices.db` to reset the database
+   - Check that the Docker volume is properly mounted
 
 3. **No Devices Detected**:
    - Check the browser console for error messages
