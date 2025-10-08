@@ -14,11 +14,22 @@ if [ ! -d "$CONFIG_DIR" ]; then
     mkdir -p "$CONFIG_DIR"
 fi
 
-# Set proper ownership (in case mounted volume has wrong permissions)
+# Set proper ownership and permissions (in case mounted volume has wrong permissions)
 if [ "$(id -u)" = "0" ]; then
     # Running as root, fix permissions
     chown -R nodejs:nodejs "$CONFIG_DIR"
-    echo "🔒 Set config directory ownership to nodejs user"
+    chmod -R 755 "$CONFIG_DIR"
+    echo "🔒 Set config directory ownership to nodejs user and permissions to 755"
+else
+    # Not running as root, check if we can write
+    if [ ! -w "$CONFIG_DIR" ]; then
+        echo "⚠️  Warning: Config directory is not writable by current user"
+        echo "   This may cause issues saving settings via web interface"
+        echo "   Config directory: $CONFIG_DIR"
+        echo "   Current user: $(id -un)"
+    else
+        echo "✅ Config directory is writable"
+    fi
 fi
 
 # Copy .env.example to config directory for reference
@@ -78,5 +89,12 @@ fi
 echo "✅ Initialization complete"
 echo "🌐 Starting UniSentinal on port ${PORT:-3000}"
 
-# Start the application
-exec "$@"
+# Switch to nodejs user if we're running as root
+if [ "$(id -u)" = "0" ]; then
+    echo "🔄 Switching to nodejs user"
+    # Change to nodejs user and execute the command
+    exec su-exec nodejs "$@"
+else
+    # Already running as nodejs user or another user
+    exec "$@"
+fi

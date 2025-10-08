@@ -192,12 +192,33 @@ app.post('/api/settings', (req, res) => {
     try {
         const settings = req.body;
         const envPath = ENV_PATH;
+        const configDir = path.dirname(envPath);
+        
+        logger.info(`Attempting to save settings to: ${envPath}`);
+        logger.info(`Config directory: ${configDir}`);
+        
+        // Ensure config directory exists with proper permissions
+        if (!fs.existsSync(configDir)) {
+            logger.info(`Creating config directory: ${configDir}`);
+            fs.mkdirSync(configDir, { recursive: true, mode: 0o755 });
+        }
+        
+        // Check if we can write to the config directory
+        try {
+            fs.accessSync(configDir, fs.constants.W_OK);
+            logger.info('Config directory is writable');
+        } catch (accessError) {
+            logger.error(`Config directory is not writable: ${accessError.message}`);
+            throw new Error(`Cannot write to config directory: ${configDir}`);
+        }
         
         // Read current .env file or create new content
         let envContent = '';
         if (fs.existsSync(envPath)) {
+            logger.info('Reading existing .env file');
             envContent = fs.readFileSync(envPath, 'utf8');
         } else {
+            logger.info('Creating new .env file');
             // Create initial .env file with header comment
             envContent = '# UniFi Sentinel Configuration\n# Generated automatically from settings UI\n\n';
         }
@@ -217,7 +238,8 @@ app.post('/api/settings', (req, res) => {
         });
 
         // Write updated .env file
-        fs.writeFileSync(envPath, envContent);
+        logger.info('Writing .env file');
+        fs.writeFileSync(envPath, envContent, { mode: 0o644 });
         
         // Update process.env with new values
         Object.keys(settings).forEach(key => {
@@ -238,7 +260,23 @@ app.post('/api/settings', (req, res) => {
         });
     } catch (error) {
         logger.error('Error saving settings:', error.message);
-        res.status(500).json({ error: 'Failed to save settings' });
+        logger.error('Error stack:', error.stack);
+        
+        // Provide specific error messages
+        let errorMessage = 'Failed to save settings';
+        if (error.message.includes('EACCES')) {
+            errorMessage = 'Permission denied: Cannot write to config directory';
+        } else if (error.message.includes('ENOENT')) {
+            errorMessage = 'Config directory does not exist and cannot be created';
+        } else if (error.message.includes('Cannot write to config directory')) {
+            errorMessage = error.message;
+        }
+        
+        res.status(500).json({ 
+            error: errorMessage,
+            details: error.message,
+            configPath: ENV_PATH
+        });
     }
 });
 

@@ -1,8 +1,8 @@
 # Use the official Node.js 18 runtime as the base image
 FROM node:18-alpine
 
-# Install bash for init script
-RUN apk add --no-cache bash
+# Install bash and su-exec for init script
+RUN apk add --no-cache bash su-exec
 
 # Set the working directory in the container
 WORKDIR /app
@@ -27,13 +27,14 @@ COPY . .
 # Create config directory for persistent data
 RUN mkdir -p /config
 
-# Change ownership of the app directory and config to the nodejs user
-RUN chown -R nodejs:nodejs /app /config
+# Change ownership of the app directory to the nodejs user  
+RUN chown -R nodejs:nodejs /app
 
 # Verify public directory and files exist
 RUN ls -la /app/public/
 
-USER nodejs
+# Note: We don't switch to nodejs user yet - the init script will handle this
+# This allows the init script to fix permissions on mounted volumes
 
 # Expose the port the app runs on
 EXPOSE 3000
