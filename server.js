@@ -27,7 +27,17 @@ const PORT = process.env.PORT || 3000;
 const logger = new Logger();
 
 // Middleware
-app.use(helmet());
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com"],
+            scriptSrc: ["'self'"],
+            imgSrc: ["'self'", "data:", "https:"],
+            fontSrc: ["'self'", "https://cdnjs.cloudflare.com"]
+        }
+    }
+}));
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
@@ -35,6 +45,12 @@ app.use(express.static('public'));
 // Initialize database and UniFi controller
 const dbManager = new DatabaseManager();
 const unifiController = new UnifiController();
+
+// Debug: Log static file requests
+app.use('/styles.css', (req, res, next) => {
+    logger.info('CSS file requested');
+    next();
+});
 
 // Routes
 app.get('/', (req, res) => {
@@ -326,6 +342,17 @@ async function initialize() {
 
 app.listen(PORT, () => {
     logger.info(`UniFi Sentinel running on http://localhost:${PORT}`);
+    
+    // Verify static files exist
+    const publicDir = path.join(__dirname, 'public');
+    const stylesPath = path.join(publicDir, 'styles.css');
+    logger.info(`Public directory: ${publicDir}`);
+    logger.info(`Styles.css exists: ${fs.existsSync(stylesPath)}`);
+    if (fs.existsSync(publicDir)) {
+        const files = fs.readdirSync(publicDir);
+        logger.info(`Public directory contents: ${files.join(', ')}`);
+    }
+    
     initialize();
 });
 

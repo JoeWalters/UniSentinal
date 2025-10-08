@@ -17,18 +17,22 @@ RUN chmod +x /docker-init.sh && ls -la /docker-init.sh
 # Install dependencies
 RUN npm ci --only=production
 
-# Copy the rest of the application code
-COPY . .
-
 # Create a non-root user to run the application
 RUN addgroup -g 1001 -S nodejs
 RUN adduser -S nodejs -u 1001
 
-# Create config directory for persistent data
-RUN mkdir -p /config && chown -R nodejs:nodejs /config
+# Copy the rest of the application code
+COPY . .
 
-# Change ownership of the app directory to the nodejs user
-RUN chown -R nodejs:nodejs /app
+# Create config directory for persistent data
+RUN mkdir -p /config
+
+# Change ownership of the app directory and config to the nodejs user
+RUN chown -R nodejs:nodejs /app /config
+
+# Verify public directory and files exist
+RUN ls -la /app/public/
+
 USER nodejs
 
 # Expose the port the app runs on
