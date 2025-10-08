@@ -1,18 +1,17 @@
-name: Docker Build and Push
+name: Build and Push Docker Image
 
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch:
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  REGISTRY: docker.io
+  IMAGE_NAME: unisentinal
 
 jobs:
-  build-and-push:
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -25,22 +24,22 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
-    - name: Log in to Container Registry
+    - name: Log in to Docker Hub
       if: github.event_name != 'pull_request'
       uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    - name: Generate version info
+    - name: Generate version number
       id: version
       run: |
-        # Get package.json version
-        PACKAGE_VERSION=$(node -p "require('./package.json').version")
-        
         # Generate timestamp version
         TIMESTAMP_VERSION=$(date '+%Y%m%d%H%M%S')
+        
+        # Get package.json version
+        PACKAGE_VERSION=$(node -p "require('./package.json').version")
         
         # Get git commit hash
         COMMIT_HASH=${GITHUB_SHA::7}
@@ -48,23 +47,33 @@ jobs:
         # Combine versions
         FULL_VERSION="${PACKAGE_VERSION}-${TIMESTAMP_VERSION}"
         
+        echo "VERSION=${TIMESTAMP_VERSION}" >> $GITHUB_OUTPUT
         echo "package_version=${PACKAGE_VERSION}" >> $GITHUB_OUTPUT
-        echo "timestamp_version=${TIMESTAMP_VERSION}" >> $GITHUB_OUTPUT
         echo "full_version=${FULL_VERSION}" >> $GITHUB_OUTPUT
         echo "commit_hash=${COMMIT_HASH}" >> $GITHUB_OUTPUT
         echo "build_date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+
+    - name: Update version in app
+      run: |
+        # Create version.json for the app
+        cat > public/version.json << EOF
+        {
+          "version": "${{ steps.version.outputs.full_version }}",
+          "packageVersion": "${{ steps.version.outputs.package_version }}",
+          "timestampVersion": "${{ steps.version.outputs.VERSION }}",
+          "commitHash": "${{ steps.version.outputs.commit_hash }}",
+          "buildDate": "${{ steps.version.outputs.build_date }}"
+        }
+        EOF
 
     - name: Extract metadata
       id: meta
       uses: docker/metadata-action@v5
       with:
-        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}
         tags: |
-          type=ref,event=branch
-          type=ref,event=pr
           type=raw,value=latest,enable={{is_default_branch}}
-          type=raw,value=${{ steps.version.outputs.timestamp_version }},enable={{is_default_branch}}
-          type=raw,value=${{ steps.version.outputs.full_version }},enable={{is_default_branch}}
+          type=raw,value=${{ steps.version.outputs.VERSION }},enable={{is_default_branch}}
 
     - name: Build and push Docker image
       uses: docker/build-push-action@v5
@@ -81,28 +90,20 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
-    - name: Update version in package.json
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    - name: Update README with new image info
+      if: github.event_name != 'pull_request' && github.ref_name == 'main'
       run: |
-        # Update package.json with timestamp version for development builds
-        npm version ${{ steps.version.outputs.full_version }} --no-git-tag-version
-        
-        # Create a version.json file for the application to read
-        cat > public/version.json << EOF
-        {
-          "version": "${{ steps.version.outputs.full_version }}",
-          "packageVersion": "${{ steps.version.outputs.package_version }}",
-          "timestampVersion": "${{ steps.version.outputs.timestamp_version }}",
-          "commitHash": "${{ steps.version.outputs.commit_hash }}",
-          "buildDate": "${{ steps.version.outputs.build_date }}"
-        }
-        EOF
-
-    - name: Commit version updates
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add package.json public/version.json
-        git diff --staged --quiet || git commit -m "Update version to ${{ steps.version.outputs.full_version }} [skip ci]"
-        git push
+        echo "🐳 Docker image built and pushed successfully!" >> $GITHUB_STEP_SUMMARY
+        echo "📦 Images:" >> $GITHUB_STEP_SUMMARY
+        echo "- \`${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest\`" >> $GITHUB_STEP_SUMMARY
+        echo "- \`${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Quick Start:" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+        echo "docker run -p 3000:3000 ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Version Info:" >> $GITHUB_STEP_SUMMARY
+        echo "- **Build Version:** ${{ steps.version.outputs.full_version }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Timestamp:** ${{ steps.version.outputs.VERSION }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Commit:** ${{ steps.version.outputs.commit_hash }}" >> $GITHUB_STEP_SUMMARY

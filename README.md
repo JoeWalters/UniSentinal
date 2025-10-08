@@ -23,7 +23,7 @@ A web application that monitors your UniFi Dream Machine Special Edition for new
 
 1. **Pull the latest image**:
    ```bash
-   docker pull ghcr.io/joewalters/unisentinal:latest
+   docker pull joewalters/unisentinal:latest
    ```
 
 2. **Run with Docker**:
@@ -35,7 +35,7 @@ A web application that monitors your UniFi Dream Machine Special Edition for new
      -e UNIFI_HOST=192.168.1.1 \
      -e UNIFI_USERNAME=admin \
      -e UNIFI_PASSWORD=your_password \
-     ghcr.io/joewalters/unisentinal:latest
+     joewalters/unisentinal:latest
    ```
 
 3. **Or use Docker Compose**:
@@ -132,12 +132,19 @@ For each device, the system tracks:
 - First and last seen timestamps
 - Detection timestamp by Sentinel
 
-## Docker
+## 🐳 Docker
+
+### Quick Start
+```bash
+docker run -p 3000:3000 joewalters/unisentinal:latest
+```
 
 ### Available Tags
-- `latest` - Latest stable release
-- `YYYYMMDDHHMMSS` - Timestamp-based builds (e.g., `20240308120000`)
-- `1.0.0-YYYYMMDDHHMMSS` - Version with timestamp (e.g., `1.0.0-20240308120000`)
+- `latest` - Most recent stable version
+- `YYYYMMDDHHMMSS` - Timestamped versions (e.g., `20251008142658`)
+
+### Docker Hub
+Images are automatically built and published to Docker Hub: https://hub.docker.com/r/joewalters/unisentinal
 
 ### Environment Variables for Docker
 ```bash
@@ -151,6 +158,18 @@ UNIFI_PORT=443                  # Default: 443
 UNIFI_SITE=default              # Default: default
 PORT=3000                       # Default: 3000
 NODE_ENV=production             # Default: production
+```
+
+### Full Docker Run Example
+```bash
+docker run -d \
+  --name unisentinal \
+  -p 3000:3000 \
+  -v $(pwd)/data:/app/data \
+  -e UNIFI_HOST=192.168.1.1 \
+  -e UNIFI_USERNAME=admin \
+  -e UNIFI_PASSWORD=your_password \
+  joewalters/unisentinal:latest
 ```
 
 ### Building from Source
