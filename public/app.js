@@ -11,6 +11,7 @@ class UniFiSentinel {
         this.initializeDarkMode(); // Initialize dark mode before loading content
         this.loadDevices();
         this.checkStatus();
+        this.loadVersion();
         this.startAutoRefresh();
     }
 
@@ -419,6 +420,68 @@ class UniFiSentinel {
         document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
     }
 
+    async loadVersion() {
+        try {
+            const response = await fetch('/api/version');
+            const versionInfo = await response.json();
+            this.displayVersion(versionInfo);
+        } catch (error) {
+            console.error('Error loading version info:', error);
+            document.getElementById('versionInfo').textContent = 'Unknown';
+        }
+    }
+
+    displayVersion(versionInfo) {
+        // Update footer version
+        const versionElement = document.getElementById('versionInfo');
+        if (versionElement) {
+            versionElement.textContent = versionInfo.version || versionInfo.packageVersion || 'Unknown';
+        }
+
+        // Update detailed version in settings modal
+        const versionDetails = document.getElementById('versionDetails');
+        if (versionDetails) {
+            versionDetails.innerHTML = `
+                <div class="version-grid">
+                    <div class="version-item">
+                        <strong>Application Version:</strong>
+                        <span>${versionInfo.packageVersion || 'Unknown'}</span>
+                    </div>
+                    ${versionInfo.version && versionInfo.version !== versionInfo.packageVersion ? `
+                        <div class="version-item">
+                            <strong>Build Version:</strong>
+                            <span>${versionInfo.version}</span>
+                        </div>
+                    ` : ''}
+                    ${versionInfo.timestampVersion ? `
+                        <div class="version-item">
+                            <strong>Build ID:</strong>
+                            <span>${versionInfo.timestampVersion}</span>
+                        </div>
+                    ` : ''}
+                    ${versionInfo.commitHash ? `
+                        <div class="version-item">
+                            <strong>Commit:</strong>
+                            <span>${versionInfo.commitHash}</span>
+                        </div>
+                    ` : ''}
+                    ${versionInfo.buildDate ? `
+                        <div class="version-item">
+                            <strong>Build Date:</strong>
+                            <span>${new Date(versionInfo.buildDate).toLocaleString()}</span>
+                        </div>
+                    ` : ''}
+                    ${versionInfo.dockerVersion ? `
+                        <div class="version-item">
+                            <strong>Docker Version:</strong>
+                            <span>${versionInfo.dockerVersion}</span>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+    }
+
     showLoading(show) {
         const loading = document.getElementById('loading');
         const grid = document.getElementById('devicesGrid');
@@ -690,6 +753,9 @@ class UniFiSentinel {
         
         // Load logs
         await this.loadLogs();
+        
+        // Load version info
+        await this.loadVersion();
         
         modal.style.display = 'block';
     }

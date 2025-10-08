@@ -19,6 +19,41 @@ A web application that monitors your UniFi Dream Machine Special Edition for new
 
 ## Installation
 
+### Option 1: Docker (Recommended)
+
+1. **Pull the latest image**:
+   ```bash
+   docker pull ghcr.io/joewalters/unisentinal:latest
+   ```
+
+2. **Run with Docker**:
+   ```bash
+   docker run -d \
+     --name unisentinal \
+     -p 3000:3000 \
+     -v $(pwd)/data:/app/data \
+     -e UNIFI_HOST=192.168.1.1 \
+     -e UNIFI_USERNAME=admin \
+     -e UNIFI_PASSWORD=your_password \
+     ghcr.io/joewalters/unisentinal:latest
+   ```
+
+3. **Or use Docker Compose**:
+   ```bash
+   # Download docker-compose.yml from the repository
+   curl -O https://raw.githubusercontent.com/JoeWalters/UniSentinal/main/docker-compose.yml
+   
+   # Set environment variables
+   export UNIFI_HOST=192.168.1.1
+   export UNIFI_USERNAME=admin
+   export UNIFI_PASSWORD=your_password
+   
+   # Start the service
+   docker-compose up -d
+   ```
+
+### Option 2: Manual Installation
+
 1. **Clone the repository** (if not already done):
    ```bash
    git clone <repository-url>
@@ -96,6 +131,44 @@ For each device, the system tracks:
 - Traffic statistics (bytes sent/received)
 - First and last seen timestamps
 - Detection timestamp by Sentinel
+
+## Docker
+
+### Available Tags
+- `latest` - Latest stable release
+- `YYYYMMDDHHMMSS` - Timestamp-based builds (e.g., `20240308120000`)
+- `1.0.0-YYYYMMDDHHMMSS` - Version with timestamp (e.g., `1.0.0-20240308120000`)
+
+### Environment Variables for Docker
+```bash
+# Required
+UNIFI_HOST=192.168.1.1          # Your UniFi controller IP
+UNIFI_USERNAME=admin            # UniFi admin username  
+UNIFI_PASSWORD=your_password    # UniFi admin password
+
+# Optional
+UNIFI_PORT=443                  # Default: 443
+UNIFI_SITE=default              # Default: default
+PORT=3000                       # Default: 3000
+NODE_ENV=production             # Default: production
+```
+
+### Building from Source
+```bash
+# Clone and build
+git clone https://github.com/JoeWalters/UniSentinal.git
+cd UniSentinal
+docker build -t unisentinal .
+
+# Run your custom build
+docker run -d --name unisentinal -p 3000:3000 unisentinal
+```
+
+### Version Information
+The Docker images include build metadata and version information accessible via:
+- `/api/version` endpoint
+- Web interface footer and settings modal
+- Docker labels for image metadata
 
 ## API Endpoints
 

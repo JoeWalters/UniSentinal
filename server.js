@@ -98,6 +98,40 @@ app.get('/api/stats', async (req, res) => {
     }
 });
 
+app.get('/api/version', (req, res) => {
+    try {
+        const packageJson = require('./package.json');
+        let versionInfo = {
+            version: packageJson.version,
+            packageVersion: packageJson.version
+        };
+
+        // Try to read version.json if it exists (created by CI/CD)
+        try {
+            const versionJson = require('./public/version.json');
+            versionInfo = { ...versionInfo, ...versionJson };
+        } catch (err) {
+            // version.json doesn't exist, use fallback
+        }
+
+        // Add environment variables if available (from Docker)
+        if (process.env.VERSION) {
+            versionInfo.dockerVersion = process.env.VERSION;
+        }
+        if (process.env.BUILD_DATE) {
+            versionInfo.buildDate = process.env.BUILD_DATE;
+        }
+        if (process.env.VCS_REF) {
+            versionInfo.commitHash = process.env.VCS_REF;
+        }
+
+        res.json(versionInfo);
+    } catch (error) {
+        logger.error('Error getting version info:', error.message);
+        res.status(500).json({ error: 'Failed to get version info' });
+    }
+});
+
 app.get('/api/diagnostics', async (req, res) => {
     try {
         logger.info('Running diagnostics check');

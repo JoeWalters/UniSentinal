@@ -677,6 +677,46 @@ footer p {
     margin-bottom: 5px;
 }
 
+.version-info {
+    font-size: 0.8rem;
+    opacity: 0.7;
+}
+
+.version-details {
+    background: var(--bg-tertiary);
+    border-radius: 8px;
+    padding: 15px;
+    border: 1px solid var(--border-color);
+}
+
+.version-grid {
+    display: grid;
+    gap: 10px;
+}
+
+.version-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.version-item:last-child {
+    border-bottom: none;
+}
+
+.version-item strong {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.version-item span {
+    color: var(--text-secondary);
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
     .container {

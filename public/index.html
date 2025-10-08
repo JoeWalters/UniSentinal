@@ -151,6 +151,7 @@
         <footer>
             <p>Last scan: <span id="lastUpdated">-</span></p>
             <p>Monitoring for new devices every 30 seconds</p>
+            <p class="version-info">Version: <span id="versionInfo">-</span></p>
         </footer>
     </div>
 
@@ -224,6 +225,13 @@
                             <label for="scanInterval">Scan Interval (seconds)</label>
                             <input type="number" id="scanInterval" value="30" placeholder="30" min="10" max="300">
                         </div>
+                    </div>
+                </div>
+                
+                <div class="settings-section">
+                    <h4>Version Information</h4>
+                    <div class="version-details" id="versionDetails">
+                        <div class="loading">Loading version information...</div>
                     </div>
                 </div>
                 
