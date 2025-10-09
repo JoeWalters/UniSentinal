@@ -31,7 +31,19 @@
         </header>
 
         <main>
-            <div class="controls-section">
+            <!-- Tab Navigation -->
+            <div class="tab-navigation">
+                <button class="tab-button active" data-tab="monitoring">
+                    <i class="fas fa-shield-alt"></i> Device Monitoring
+                </button>
+                <button class="tab-button" data-tab="parental">
+                    <i class="fas fa-user-shield"></i> Parental Controls
+                </button>
+            </div>
+
+            <!-- Device Monitoring Tab -->
+            <div id="monitoring-tab" class="tab-content active">
+                <div class="controls-section">
                 <div class="stats-grid">
                     <div class="stat-card">
                         <i class="fas fa-plus-circle"></i>
@@ -145,6 +157,61 @@
                     </div>
                 </div>
             </div>
+        </div>
+
+        <!-- Parental Controls Tab -->
+        <div id="parental-tab" class="tab-content">
+            <div class="parental-controls">
+                <div class="parental-header">
+                    <h2><i class="fas fa-user-shield"></i> Parental Controls</h2>
+                    <div class="parental-actions">
+                        <button id="addDeviceBtn" class="btn btn-primary">
+                            <i class="fas fa-plus"></i> Add Device
+                        </button>
+                        <button id="refreshParentalBtn" class="btn btn-secondary">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                    </div>
+                </div>
+
+                <div class="parental-stats">
+                    <div class="stat-card">
+                        <i class="fas fa-ban"></i>
+                        <div class="stat-info">
+                            <span class="stat-number" id="blockedDevicesCount">-</span>
+                            <span class="stat-label">Blocked Devices</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <i class="fas fa-clock"></i>
+                        <div class="stat-info">
+                            <span class="stat-number" id="scheduledDevicesCount">-</span>
+                            <span class="stat-label">Scheduled Devices</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <i class="fas fa-hourglass-half"></i>
+                        <div class="stat-info">
+                            <span class="stat-number" id="timeLimitedDevicesCount">-</span>
+                            <span class="stat-label">Time Limited</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="managed-devices-section">
+                    <h3>Managed Devices</h3>
+                    <div id="managedDevicesGrid" class="managed-devices-grid">
+                        <!-- Managed devices will be populated here -->
+                    </div>
+                </div>
+
+                <div id="noManagedDevices" class="no-devices" style="display: none;">
+                    <i class="fas fa-user-shield"></i>
+                    <p>No devices under parental control</p>
+                    <small>Click "Add Device" to start managing devices</small>
+                </div>
+            </div>
+        </div>
 
         </main>
 
@@ -254,6 +321,131 @@
                 <button class="btn btn-secondary" id="settingsCloseBtn">Cancel</button>
                 <button class="btn btn-info" id="testSettingsBtn">Test Settings</button>
                 <button class="btn btn-primary" id="saveSettingsBtn">Save Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Device to Parental Controls Modal -->
+    <div class="modal" id="addDeviceModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-plus"></i> Add Device to Parental Controls</h3>
+                <button class="close-btn" id="closeAddDeviceModal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="device-selection">
+                    <input type="text" id="deviceSearchInput" placeholder="Search devices..." class="search-input">
+                    <div id="availableDevicesList" class="available-devices-list">
+                        <!-- Available devices will be populated here -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="addDeviceCloseBtn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Device Management Modal -->
+    <div class="modal" id="deviceManagementModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="managementModalTitle"><i class="fas fa-cog"></i> Device Management</h3>
+                <button class="close-btn" id="closeManagementModal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="management-tabs">
+                    <button class="management-tab active" data-tab="controls">Controls</button>
+                    <button class="management-tab" data-tab="schedule">Schedule</button>
+                    <button class="management-tab" data-tab="time-limits">Time Limits</button>
+                    <button class="management-tab" data-tab="logs">Activity</button>
+                </div>
+
+                <!-- Controls Tab -->
+                <div id="controls-tab" class="management-tab-content active">
+                    <div class="control-section">
+                        <h4>Quick Actions</h4>
+                        <div class="control-buttons">
+                            <button id="blockDeviceBtn" class="btn btn-danger">
+                                <i class="fas fa-ban"></i> Block Device
+                            </button>
+                            <button id="unblockDeviceBtn" class="btn btn-success">
+                                <i class="fas fa-check"></i> Unblock Device
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="control-section">
+                        <h4>Temporary Block</h4>
+                        <div class="time-input-group">
+                            <input type="number" id="tempBlockMinutes" placeholder="Minutes" min="1" max="1440">
+                            <button id="tempBlockBtn" class="btn btn-warning">
+                                <i class="fas fa-clock"></i> Block Temporarily
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="control-section">
+                        <h4>Bonus Time</h4>
+                        <div class="time-input-group">
+                            <input type="number" id="bonusMinutes" placeholder="Minutes" min="5" max="480">
+                            <button id="addBonusTimeBtn" class="btn btn-info">
+                                <i class="fas fa-plus"></i> Add Bonus Time
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Schedule Tab -->
+                <div id="schedule-tab" class="management-tab-content">
+                    <div class="schedule-section">
+                        <h4>Weekly Schedule</h4>
+                        <div class="schedule-grid" id="scheduleGrid">
+                            <!-- Schedule will be populated here -->
+                        </div>
+                        <button id="saveScheduleBtn" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Save Schedule
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Time Limits Tab -->
+                <div id="time-limits-tab" class="management-tab-content">
+                    <div class="time-limit-section">
+                        <h4>Daily Time Limit</h4>
+                        <div class="time-limit-input">
+                            <label for="dailyTimeLimit">Minutes per day (0 = no limit):</label>
+                            <input type="number" id="dailyTimeLimit" min="0" max="1440" placeholder="0">
+                        </div>
+                        <div class="time-usage-display">
+                            <p>Time used today: <span id="timeUsedToday">0</span> minutes</p>
+                            <p>Time remaining: <span id="timeRemaining">Unlimited</span></p>
+                        </div>
+                        <button id="saveTimeLimitBtn" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Save Time Limit
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Activity Logs Tab -->
+                <div id="logs-tab" class="management-tab-content">
+                    <div class="activity-logs">
+                        <h4>Recent Activity</h4>
+                        <div id="deviceActivityLogs" class="activity-logs-list">
+                            <!-- Activity logs will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="managementCloseBtn">Close</button>
+                <button class="btn btn-danger" id="removeDeviceBtn">
+                    <i class="fas fa-trash"></i> Remove from Parental Controls
+                </button>
             </div>
         </div>
     </div>

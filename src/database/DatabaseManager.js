@@ -49,11 +49,50 @@ class DatabaseManager {
             )
         `;
 
+        const createParentalControlsTable = `
+            CREATE TABLE IF NOT EXISTS parental_controls (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mac TEXT UNIQUE NOT NULL,
+                device_name TEXT NOT NULL,
+                ip TEXT,
+                vendor TEXT,
+                is_blocked BOOLEAN DEFAULT 0,
+                is_managed BOOLEAN DEFAULT 1,
+                daily_time_limit INTEGER DEFAULT 0, -- minutes per day, 0 = no limit
+                bonus_time INTEGER DEFAULT 0, -- additional minutes available
+                time_used_today INTEGER DEFAULT 0, -- minutes used today
+                last_reset_date TEXT, -- when time_used_today was last reset
+                is_scheduled BOOLEAN DEFAULT 0,
+                schedule_data TEXT, -- JSON string with schedule rules
+                blocked_until TEXT, -- timestamp when temporary block expires
+                notes TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        `;
+
+        const createParentalLogsTable = `
+            CREATE TABLE IF NOT EXISTS parental_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mac TEXT NOT NULL,
+                action TEXT NOT NULL, -- 'blocked', 'unblocked', 'time_added', 'schedule_changed'
+                reason TEXT, -- 'manual', 'schedule', 'time_limit', 'temporary'
+                duration INTEGER, -- for time-based actions
+                admin_user TEXT,
+                timestamp TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        `;
+
         try {
-            this.db.exec(createDevicesTable);
-            console.log('Devices table ready');
+            this.db.exec(createDevicesTable);console.log('Devices table ready');
+            
+            this.db.exec(createParentalControlsTable);
+            console.log('Parental controls table ready');
+            
+            this.db.exec(createParentalLogsTable);
+            console.log('Parental logs table ready');
         } catch (error) {
-            console.error('Error creating devices table:', error);
+            console.error('Error creating database tables:', error);
             throw error;
         }
     }
@@ -183,6 +222,190 @@ class DatabaseManager {
             return stats;
         } catch (error) {
             console.error('Error getting device stats:', error);
+            throw error;
+        }
+    }
+
+    // Parental Controls Methods
+    async addManagedDevice(deviceData) {
+        try {
+            const stmt = this.db.prepare(`
+                INSERT OR REPLACE INTO parental_controls 
+                (mac, device_name, ip, vendor, is_managed, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            `);
+            
+            stmt.run(
+                deviceData.mac,
+                deviceData.device_name || deviceData.hostname || 'Unknown Device',
+                deviceData.ip,
+                deviceData.vendor
+            );
+            
+            console.log(`Added device to parental controls: ${deviceData.mac}`);
+        } catch (error) {
+            console.error('Error adding managed device:', error);
+            throw error;
+        }
+    }
+
+    async getManagedDevices() {
+        try {
+            const stmt = this.db.prepare(`
+                SELECT * FROM parental_controls 
+                WHERE is_managed = 1 
+                ORDER BY device_name
+            `);
+            return stmt.all();
+        } catch (error) {
+            console.error('Error getting managed devices:', error);
+            throw error;
+        }
+    }
+
+    async updateDeviceBlockStatus(mac, isBlocked, reason = 'manual', duration = null) {
+        try {
+            const stmt = this.db.prepare(`
+                UPDATE parental_controls 
+                SET is_blocked = ?, 
+                    blocked_until = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE mac = ?
+            `);
+            
+            let blockedUntil = null;
+            if (isBlocked && duration) {
+                const until = new Date();
+                until.setMinutes(until.getMinutes() + duration);
+                blockedUntil = until.toISOString();
+            }
+            
+            stmt.run(isBlocked ? 1 : 0, blockedUntil, mac);
+            
+            // Log the action
+            this.logParentalAction(mac, isBlocked ? 'blocked' : 'unblocked', reason, duration);
+            
+            console.log(`Device ${mac} ${isBlocked ? 'blocked' : 'unblocked'}`);
+        } catch (error) {
+            console.error('Error updating device block status:', error);
+            throw error;
+        }
+    }
+
+    async updateDeviceTimeLimit(mac, dailyTimeLimit, bonusTime = 0) {
+        try {
+            const stmt = this.db.prepare(`
+                UPDATE parental_controls 
+                SET daily_time_limit = ?, 
+                    bonus_time = bonus_time + ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE mac = ?
+            `);
+            
+            stmt.run(dailyTimeLimit, bonusTime, mac);
+            
+            if (bonusTime > 0) {
+                this.logParentalAction(mac, 'time_added', 'manual', bonusTime);
+            }
+            
+            console.log(`Updated time limits for device ${mac}`);
+        } catch (error) {
+            console.error('Error updating device time limit:', error);
+            throw error;
+        }
+    }
+
+    async updateDeviceSchedule(mac, scheduleData) {
+        try {
+            const stmt = this.db.prepare(`
+                UPDATE parental_controls 
+                SET schedule_data = ?, 
+                    is_scheduled = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE mac = ?
+            `);
+            
+            const hasSchedule = scheduleData && Object.keys(scheduleData).length > 0;
+            stmt.run(JSON.stringify(scheduleData), hasSchedule ? 1 : 0, mac);
+            
+            this.logParentalAction(mac, 'schedule_changed', 'manual');
+            
+            console.log(`Updated schedule for device ${mac}`);
+        } catch (error) {
+            console.error('Error updating device schedule:', error);
+            throw error;
+        }
+    }
+
+    async resetDailyTimeUsage() {
+        try {
+            const today = new Date().toDateString();
+            const stmt = this.db.prepare(`
+                UPDATE parental_controls 
+                SET time_used_today = 0,
+                    last_reset_date = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE last_reset_date != ? OR last_reset_date IS NULL
+            `);
+            
+            const result = stmt.run(today, today);
+            if (result.changes > 0) {
+                console.log(`Reset daily time usage for ${result.changes} devices`);
+            }
+        } catch (error) {
+            console.error('Error resetting daily time usage:', error);
+            throw error;
+        }
+    }
+
+    async removeManagedDevice(mac) {
+        try {
+            const stmt = this.db.prepare(`
+                UPDATE parental_controls 
+                SET is_managed = 0,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE mac = ?
+            `);
+            
+            stmt.run(mac);
+            console.log(`Removed device from parental controls: ${mac}`);
+        } catch (error) {
+            console.error('Error removing managed device:', error);
+            throw error;
+        }
+    }
+
+    async logParentalAction(mac, action, reason, duration = null, adminUser = 'system') {
+        try {
+            const stmt = this.db.prepare(`
+                INSERT INTO parental_logs (mac, action, reason, duration, admin_user)
+                VALUES (?, ?, ?, ?, ?)
+            `);
+            
+            stmt.run(mac, action, reason, duration, adminUser);
+        } catch (error) {
+            console.error('Error logging parental action:', error);
+        }
+    }
+
+    async getParentalLogs(mac = null, limit = 100) {
+        try {
+            let query = `
+                SELECT pl.*, pc.device_name
+                FROM parental_logs pl
+                LEFT JOIN parental_controls pc ON pl.mac = pc.mac
+            `;
+            
+            if (mac) {
+                query += ` WHERE pl.mac = ?`;
+            }
+            
+            query += ` ORDER BY pl.timestamp DESC LIMIT ?`;
+            
+            const stmt = this.db.prepare(query);
+            return mac ? stmt.all(mac, limit) : stmt.all(limit);
+        } catch (error) {
+            console.error('Error getting parental logs:', error);
             throw error;
         }
     }

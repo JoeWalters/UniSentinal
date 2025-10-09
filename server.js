@@ -18,6 +18,7 @@ require('dotenv').config({ path: ENV_PATH });
 
 const UnifiController = require('./src/controllers/UnifiController');
 const DatabaseManager = require('./src/database/DatabaseManager');
+const ParentalControlsManager = require('./src/controllers/ParentalControlsManager');
 const Logger = require('./src/utils/Logger');
 
 const app = express();
@@ -45,6 +46,7 @@ app.use(express.static('public'));
 // Initialize database and UniFi controller
 const dbManager = new DatabaseManager();
 const unifiController = new UnifiController();
+const parentalControls = new ParentalControlsManager(unifiController, dbManager);
 
 // Debug: Log static file requests
 app.use('/styles.css', (req, res, next) => {
@@ -167,6 +169,100 @@ app.get('/api/diagnostics', async (req, res) => {
     } catch (error) {
         logger.error('Error running diagnostics:', error.message);
         res.status(500).json({ error: 'Failed to run diagnostics' });
+    }
+});
+
+// Parental Controls API endpoints
+app.get('/api/parental/devices/available', async (req, res) => {
+    try {
+        const devices = await parentalControls.getAvailableDevices();
+        res.json(devices);
+    } catch (error) {
+        logger.error('Error getting available devices:', error.message);
+        res.status(500).json({ error: 'Failed to get available devices' });
+    }
+});
+
+app.get('/api/parental/devices/managed', async (req, res) => {
+    try {
+        const devices = await parentalControls.getManagedDevicesStatus();
+        res.json(devices);
+    } catch (error) {
+        logger.error('Error getting managed devices:', error.message);
+        res.status(500).json({ error: 'Failed to get managed devices' });
+    }
+});
+
+app.post('/api/parental/devices/add', async (req, res) => {
+    try {
+        const result = await parentalControls.addDeviceToParentalControls(req.body);
+        res.json(result);
+    } catch (error) {
+        logger.error('Error adding device to parental controls:', error.message);
+        res.status(500).json({ error: 'Failed to add device to parental controls' });
+    }
+});
+
+app.delete('/api/parental/devices/:mac', async (req, res) => {
+    try {
+        const result = await parentalControls.removeDeviceFromParentalControls(req.params.mac);
+        res.json(result);
+    } catch (error) {
+        logger.error('Error removing device from parental controls:', error.message);
+        res.status(500).json({ error: 'Failed to remove device from parental controls' });
+    }
+});
+
+app.post('/api/parental/devices/:mac/block', async (req, res) => {
+    try {
+        const { duration, reason } = req.body;
+        const result = await parentalControls.blockDevice(req.params.mac, reason || 'manual', duration);
+        res.json(result);
+    } catch (error) {
+        logger.error('Error blocking device:', error.message);
+        res.status(500).json({ error: 'Failed to block device' });
+    }
+});
+
+app.post('/api/parental/devices/:mac/unblock', async (req, res) => {
+    try {
+        const { reason } = req.body;
+        const result = await parentalControls.unblockDevice(req.params.mac, reason || 'manual');
+        res.json(result);
+    } catch (error) {
+        logger.error('Error unblocking device:', error.message);
+        res.status(500).json({ error: 'Failed to unblock device' });
+    }
+});
+
+app.post('/api/parental/devices/:mac/time-limit', async (req, res) => {
+    try {
+        const { dailyTimeLimit, bonusTime } = req.body;
+        const result = await parentalControls.setTimeLimit(req.params.mac, dailyTimeLimit, bonusTime);
+        res.json(result);
+    } catch (error) {
+        logger.error('Error setting time limit:', error.message);
+        res.status(500).json({ error: 'Failed to set time limit' });
+    }
+});
+
+app.post('/api/parental/devices/:mac/schedule', async (req, res) => {
+    try {
+        const result = await parentalControls.setSchedule(req.params.mac, req.body);
+        res.json(result);
+    } catch (error) {
+        logger.error('Error setting schedule:', error.message);
+        res.status(500).json({ error: 'Failed to set schedule' });
+    }
+});
+
+app.get('/api/parental/logs/:mac?', async (req, res) => {
+    try {
+        const logs = await dbManager.getParentalLogs(req.params.mac, parseInt(req.query.limit) || 100);
+        res.json(logs);
+    } catch (error) {
+        logger.error('Error getting parental logs:', error.message);
+        res.status(500).json({ error: 'Failed to get parental logs' });
     }
 });
 

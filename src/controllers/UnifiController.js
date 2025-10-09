@@ -342,6 +342,103 @@ class UnifiController {
 
         return diagnostics;
     }
+
+    // Block device by MAC address
+    async blockDevice(mac) {
+        if (!this.isConfigured()) {
+            throw new Error('UniFi controller not configured');
+        }
+
+        try {
+            await this.login();
+            
+            const response = await this.axiosInstance.post(
+                `${this.baseUrl}/api/s/${this.site}/cmd/stamgr`,
+                {
+                    cmd: 'block-sta',
+                    mac: mac.toLowerCase()
+                },
+                {
+                    headers: {
+                        'Cookie': this.cookies,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+
+            console.log(`Device ${mac} blocked successfully`);
+            return response.data?.meta?.rc === 'ok';
+        } catch (error) {
+            console.error('Error blocking device:', error.message);
+            throw error;
+        }
+    }
+
+    // Unblock device by MAC address
+    async unblockDevice(mac) {
+        if (!this.isConfigured()) {
+            throw new Error('UniFi controller not configured');
+        }
+
+        try {
+            await this.login();
+            
+            const response = await this.axiosInstance.post(
+                `${this.baseUrl}/api/s/${this.site}/cmd/stamgr`,
+                {
+                    cmd: 'unblock-sta',
+                    mac: mac.toLowerCase()
+                },
+                {
+                    headers: {
+                        'Cookie': this.cookies,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+
+            console.log(`Device ${mac} unblocked successfully`);
+            return response.data?.meta?.rc === 'ok';
+        } catch (error) {
+            console.error('Error unblocking device:', error.message);
+            throw error;
+        }
+    }
+
+    // Get blocked devices list
+    async getBlockedDevices() {
+        if (!this.isConfigured()) {
+            throw new Error('UniFi controller not configured');
+        }
+
+        try {
+            await this.login();
+            
+            const response = await this.axiosInstance.get(
+                `${this.baseUrl}/api/s/${this.site}/rest/user`,
+                {
+                    headers: {
+                        'Cookie': this.cookies
+                    }
+                }
+            );
+
+            if (response.data?.meta?.rc === 'ok') {
+                const blockedDevices = response.data.data.filter(device => device.blocked === true);
+                return blockedDevices.map(device => ({
+                    mac: device.mac,
+                    hostname: device.hostname || device.name || 'Unknown',
+                    blocked: device.blocked,
+                    blocked_at: device.blocked_at
+                }));
+            }
+            
+            return [];
+        } catch (error) {
+            console.error('Error getting blocked devices:', error.message);
+            throw error;
+        }
+    }
 }
 
 module.exports = UnifiController;
