@@ -21,7 +21,8 @@
     "axios": "^0.27.2",
     "cors": "^2.8.5",
     "helmet": "^4.6.0",
-    "dotenv": "^10.0.0"
+    "dotenv": "^10.0.0",
+    "node-unifi": "^0.0.7"
   },
   "devDependencies": {
     "nodemon": "^2.0.20"
