@@ -1051,16 +1051,43 @@ class UniFiSentinel {
     // Load parental controls data
     async loadParentalControlsData() {
         try {
+            console.log('Loading parental controls data...');
             // Load managed devices
             const response = await fetch('/api/parental/devices/managed');
-            if (!response.ok) throw new Error('Failed to fetch managed devices');
+            console.log('Managed devices response status:', response.status);
+            console.log('Managed devices response ok:', response.ok);
+            
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                console.error('Managed devices error response:', errorData);
+                throw new Error(errorData.error || 'Failed to fetch managed devices');
+            }
             
             const managedDevices = await response.json();
+            console.log('Managed devices data:', managedDevices);
             this.renderManagedDevices(managedDevices);
             this.updateParentalStats(managedDevices);
         } catch (error) {
             console.error('Error loading parental controls data:', error);
-            this.showError('Failed to load parental controls data');
+            
+            // Show a more helpful error message
+            const grid = document.getElementById('managedDevicesGrid');
+            const noDevices = document.getElementById('noManagedDevices');
+            
+            if (grid && noDevices) {
+                grid.style.display = 'none';
+                noDevices.style.display = 'block';
+                noDevices.innerHTML = `
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p>Unable to load parental controls data</p>
+                    <small>${error.message}</small>
+                `;
+            }
+            
+            // Reset stats to show zeros instead of errors
+            document.getElementById('blockedDevicesCount').textContent = '-';
+            document.getElementById('scheduledDevicesCount').textContent = '-';
+            document.getElementById('timeLimitedDevicesCount').textContent = '-';
         }
     }
 
@@ -1155,14 +1182,28 @@ class UniFiSentinel {
     async showAddDeviceModal() {
         try {
             const response = await fetch('/api/parental/devices/available');
-            if (!response.ok) throw new Error('Failed to fetch available devices');
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || 'Failed to fetch available devices');
+            }
             
             const devices = await response.json();
             this.renderAvailableDevices(devices);
             document.getElementById('addDeviceModal').style.display = 'flex';
         } catch (error) {
             console.error('Error loading available devices:', error);
-            this.showError('Failed to load available devices');
+            
+            // Check if it's a configuration error
+            if (error.message.includes('not configured')) {
+                this.showNotification('Please configure your UniFi controller in settings before adding devices', 'warning');
+                
+                // Show settings modal hint
+                setTimeout(() => {
+                    this.showNotification('Click the gear icon (⚙️) in the top right to configure UniFi settings', 'info');
+                }, 2000);
+            } else {
+                this.showError('Failed to load available devices: ' + error.message);
+            }
         }
     }
 
@@ -1422,14 +1463,26 @@ class UniFiSentinel {
                 body: JSON.stringify(deviceData)
             });
 
-            if (!response.ok) throw new Error('Failed to add device');
+            console.log('Add device response status:', response.status);
+            console.log('Add device response ok:', response.ok);
+            
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                console.error('Add device error response:', errorData);
+                throw new Error(errorData.error || 'Failed to add device');
+            }
 
+            const result = await response.json();
+            console.log('Add device success response:', result);
             this.showNotification(`Device "${deviceData.device_name}" added to parental controls`, 'success');
             this.closeAddDeviceModal();
-            await this.loadParentalControlsData(); // Refresh the parental controls data
+            
+            // Refresh the parental controls data
+            console.log('Refreshing parental controls data...');
+            await this.loadParentalControlsData();
         } catch (error) {
             console.error('Error adding device to parental controls:', error);
-            this.showError('Failed to add device to parental controls');
+            this.showError('Failed to add device to parental controls: ' + error.message);
         }
     }
 

@@ -16,6 +16,11 @@ class ParentalControlsManager {
     // Get all devices from UniFi controller for parental control selection
     async getAvailableDevices() {
         try {
+            // Check if UniFi controller is configured
+            if (!this.unifiController.isConfigured()) {
+                throw new Error('UniFi controller not configured. Please configure your UniFi controller in settings to add devices.');
+            }
+
             const allDevices = await this.unifiController.getAllClientDevices();
             const managedDevices = await this.db.getManagedDevices();
             const managedMacs = new Set(managedDevices.map(d => d.mac));
@@ -113,8 +118,24 @@ class ParentalControlsManager {
     // Get current status of all managed devices
     async getManagedDevicesStatus() {
         try {
+            console.log('ParentalControlsManager: Getting managed devices from database...');
             const managedDevices = await this.db.getManagedDevices();
-            const currentDevices = await this.unifiController.getAllKnownDevices();
+            console.log(`ParentalControlsManager: Found ${managedDevices.length} managed devices in database`);
+            
+            // Try to get current device data from UniFi controller, but don't fail if it's not configured
+            let currentDevices = new Map();
+            try {
+                if (this.unifiController.isConfigured()) {
+                    console.log('ParentalControlsManager: UniFi controller is configured, fetching current devices...');
+                    currentDevices = await this.unifiController.getAllKnownDevices();
+                    console.log(`ParentalControlsManager: Got ${currentDevices.size} current devices from UniFi`);
+                } else {
+                    console.log('ParentalControlsManager: UniFi controller not configured, using stored data only');
+                }
+            } catch (error) {
+                console.warn('Could not fetch current device data from UniFi controller:', error.message);
+                // Continue without current device data
+            }
             
             return managedDevices.map(device => {
                 const currentDevice = currentDevices.get(device.mac);
@@ -123,7 +144,7 @@ class ParentalControlsManager {
                 return {
                     ...device,
                     isOnline: currentDevice ? true : false,
-                    currentIp: currentDevice ? currentDevice.ip : null,
+                    currentIp: currentDevice ? currentDevice.ip : device.ip, // Fallback to stored IP
                     lastSeen: currentDevice ? currentDevice.last_seen : null,
                     schedule: scheduleData,
                     timeRemaining: this.calculateTimeRemaining(device),

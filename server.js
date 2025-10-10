@@ -185,21 +185,27 @@ app.get('/api/parental/devices/available', async (req, res) => {
 
 app.get('/api/parental/devices/managed', async (req, res) => {
     try {
+        logger.info('Getting managed devices status...');
         const devices = await parentalControls.getManagedDevicesStatus();
+        logger.info(`Retrieved ${devices.length} managed devices`);
         res.json(devices);
     } catch (error) {
         logger.error('Error getting managed devices:', error.message);
-        res.status(500).json({ error: 'Failed to get managed devices' });
+        logger.error('Stack trace:', error.stack);
+        res.status(500).json({ error: 'Failed to get managed devices: ' + error.message });
     }
 });
 
 app.post('/api/parental/devices/add', async (req, res) => {
     try {
+        logger.info('Adding device to parental controls:', req.body);
         const result = await parentalControls.addDeviceToParentalControls(req.body);
+        logger.info('Device added successfully:', result);
         res.json(result);
     } catch (error) {
         logger.error('Error adding device to parental controls:', error.message);
-        res.status(500).json({ error: 'Failed to add device to parental controls' });
+        logger.error('Stack trace:', error.stack);
+        res.status(500).json({ error: 'Failed to add device to parental controls: ' + error.message });
     }
 });
 
