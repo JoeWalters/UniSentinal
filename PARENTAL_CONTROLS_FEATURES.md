@@ -1,10 +1,12 @@
 # Enhanced Parental Controls Implementation
 
-## Latest Update: Fixed Device Display Issues
+## Latest Update: Fixed Add Device Button & Added Advanced Filtering
 
 ### Issues Resolved
-- **Fixed "Unknown Device" problem**: Now properly extracts device names from UniFi controller
-- **Improved device information**: Shows meaningful details like online status, connection type, IP addresses
+- **Fixed "Add to Controls" button**: Now uses proper event delegation instead of inline onclick
+- **Added comprehensive filtering system**: Filter by status, connection type, vendor, and text search
+- **Improved user experience**: Device count display, clear filters button, better visual feedback
+- **Enhanced device information**: Shows meaningful details like online status, connection type, IP addresses
 - **Client device filtering**: Filters out infrastructure devices (APs, switches) to show only client devices
 - **Better device naming**: Uses user aliases, hostnames, or generates meaningful fallback names
 
@@ -13,14 +15,19 @@ I've implemented a comprehensive parental controls system similar to Google Fami
 
 ## Features Implemented
 
-### 1. Enhanced Add Device Functionality
+### 1. Enhanced Add Device Functionality with Advanced Filtering
 - **Smart Device Detection**: Shows only client devices (phones, tablets, computers, etc.)
 - **Rich Device Information**: Displays device names, online status, connection type (WiFi/Wired), IP addresses, vendor info
 - **Intelligent Naming**: Uses UniFi user aliases or hostnames for meaningful device names
-- **Advanced Search**: Filter devices by name, MAC address, IP, or vendor
+- **Multi-Filter System**: 
+  - **Text Search**: Filter by device name, MAC address, IP, or vendor
+  - **Status Filter**: Show only online devices, offline devices, or all
+  - **Connection Filter**: Filter by WiFi only, Wired only, or all connections
+  - **Vendor Filter**: Filter by specific device manufacturers (Apple, Samsung, etc.)
+- **Filter Management**: Clear all filters button, device count display
 - **Infrastructure Filtering**: Automatically excludes access points, switches, and other network equipment
-- **Online Status**: Shows which devices are currently connected
-- **Connection Type**: Indicates whether devices are connected via WiFi or Ethernet
+- **Real-time Filtering**: Instant results as you type or change filter selections
+- **Fixed Button Functionality**: "Add to Controls" button now works reliably with proper event handling
 
 ### 2. Device Management System
 - **Comprehensive Management Modal**: Complete device control interface

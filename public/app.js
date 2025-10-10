@@ -1182,35 +1182,129 @@ class UniFiSentinel {
                     <small>All devices are already under parental control</small>
                 </div>
             `;
+            this.updateDeviceCountInfo(0, 0);
             return;
         }
 
-        this.allAvailableDevices = availableDevices; // Store for search functionality
-        this.renderFilteredDevices(availableDevices);
+        this.allAvailableDevices = availableDevices; // Store for filtering
+        this.populateVendorFilter(availableDevices);
+        this.applyFilters();
 
-        // Add search functionality
-        searchInput.oninput = (e) => {
-            const searchTerm = e.target.value.toLowerCase();
-            const filtered = availableDevices.filter(device => {
-                const displayName = (device.user_alias || device.hostname || '').toLowerCase();
-                const hostname = (device.hostname || '').toLowerCase();
-                const mac = device.mac.toLowerCase();
-                const vendor = (device.vendor || '').toLowerCase();
-                const ip = (device.ip || '').toLowerCase();
-                
-                return displayName.includes(searchTerm) ||
-                       hostname.includes(searchTerm) ||
-                       mac.includes(searchTerm) ||
-                       vendor.includes(searchTerm) ||
-                       ip.includes(searchTerm);
-            });
-            this.renderFilteredDevices(filtered);
+        // Set up event listeners for filters
+        this.setupDeviceFilterEventListeners();
+    }
+
+    // Populate vendor filter dropdown
+    populateVendorFilter(devices) {
+        const vendorFilter = document.getElementById('vendorFilter');
+        const vendors = [...new Set(devices.map(device => device.vendor).filter(vendor => vendor && vendor !== 'Unknown Vendor'))].sort();
+        
+        // Clear existing options except "All Vendors"
+        vendorFilter.innerHTML = '<option value="all">All Vendors</option>';
+        
+        vendors.forEach(vendor => {
+            const option = document.createElement('option');
+            option.value = vendor.toLowerCase();
+            option.textContent = vendor;
+            vendorFilter.appendChild(option);
+        });
+    }
+
+    // Setup event listeners for device filters
+    setupDeviceFilterEventListeners() {
+        const searchInput = document.getElementById('deviceSearchInput');
+        const statusFilter = document.getElementById('statusFilter');
+        const connectionFilter = document.getElementById('connectionFilter');
+        const vendorFilter = document.getElementById('vendorFilter');
+        const clearFiltersBtn = document.getElementById('clearFiltersBtn');
+
+        // Search input
+        searchInput.oninput = () => this.applyFilters();
+        
+        // Filter dropdowns
+        statusFilter.onchange = () => this.applyFilters();
+        connectionFilter.onchange = () => this.applyFilters();
+        vendorFilter.onchange = () => this.applyFilters();
+        
+        // Clear filters button
+        clearFiltersBtn.onclick = () => {
+            searchInput.value = '';
+            statusFilter.value = 'all';
+            connectionFilter.value = 'all';
+            vendorFilter.value = 'all';
+            this.applyFilters();
         };
+    }
+
+    // Apply all filters to the device list
+    applyFilters() {
+        if (!this.allAvailableDevices) return;
+
+        const searchTerm = document.getElementById('deviceSearchInput').value.toLowerCase();
+        const statusFilter = document.getElementById('statusFilter').value;
+        const connectionFilter = document.getElementById('connectionFilter').value;
+        const vendorFilter = document.getElementById('vendorFilter').value;
+
+        let filtered = this.allAvailableDevices.filter(device => {
+            // Text search
+            const displayName = (device.user_alias || device.hostname || '').toLowerCase();
+            const hostname = (device.hostname || '').toLowerCase();
+            const mac = device.mac.toLowerCase();
+            const vendor = (device.vendor || '').toLowerCase();
+            const ip = (device.ip || '').toLowerCase();
+            
+            const matchesSearch = !searchTerm || 
+                displayName.includes(searchTerm) ||
+                hostname.includes(searchTerm) ||
+                mac.includes(searchTerm) ||
+                vendor.includes(searchTerm) ||
+                ip.includes(searchTerm);
+
+            // Status filter
+            const matchesStatus = statusFilter === 'all' || 
+                (statusFilter === 'online' && device.is_online) ||
+                (statusFilter === 'offline' && !device.is_online);
+
+            // Connection filter
+            const matchesConnection = connectionFilter === 'all' ||
+                (connectionFilter === 'wifi' && !device.is_wired) ||
+                (connectionFilter === 'wired' && device.is_wired);
+
+            // Vendor filter
+            const matchesVendor = vendorFilter === 'all' ||
+                (device.vendor && device.vendor.toLowerCase() === vendorFilter);
+
+            return matchesSearch && matchesStatus && matchesConnection && matchesVendor;
+        });
+
+        this.renderFilteredDevices(filtered);
+        this.updateDeviceCountInfo(filtered.length, this.allAvailableDevices.length);
+    }
+
+    // Update device count information
+    updateDeviceCountInfo(filteredCount, totalCount) {
+        const deviceCountInfo = document.getElementById('deviceCountInfo');
+        if (filteredCount === totalCount) {
+            deviceCountInfo.textContent = `Showing ${totalCount} available devices`;
+        } else {
+            deviceCountInfo.textContent = `Showing ${filteredCount} of ${totalCount} devices`;
+        }
     }
 
     // Render filtered devices
     renderFilteredDevices(devices) {
         const devicesList = document.getElementById('availableDevicesList');
+        
+        if (devices.length === 0) {
+            devicesList.innerHTML = `
+                <div class="no-devices">
+                    <i class="fas fa-search"></i>
+                    <p>No devices match your filters</p>
+                    <small>Try adjusting your search or filter criteria</small>
+                </div>
+            `;
+            return;
+        }
         
         devicesList.innerHTML = devices.map(device => {
             // Determine the best display name
@@ -1234,7 +1328,11 @@ class UniFiSentinel {
                 '<i class="fas fa-wifi"></i>';
 
             return `
-                <div class="available-device-item" data-mac="${device.mac}">
+                <div class="available-device-item" 
+                     data-mac="${device.mac}"
+                     data-status="${device.is_online ? 'online' : 'offline'}"
+                     data-connection="${device.is_wired ? 'wired' : 'wifi'}"
+                     data-vendor="${(device.vendor || '').toLowerCase()}">
                     <div class="device-info">
                         <div class="device-name">
                             ${displayName}
@@ -1266,13 +1364,38 @@ class UniFiSentinel {
                         </div>
                     </div>
                     <div class="device-actions">
-                        <button class="btn btn-primary btn-small" onclick="app.addDeviceToParentalControls('${device.mac}')">
+                        <button class="btn btn-primary btn-small add-device-btn" data-mac="${device.mac}">
                             <i class="fas fa-plus"></i> Add to Controls
                         </button>
                     </div>
                 </div>
             `;
         }).join('');
+
+        // Set up event delegation for add device buttons
+        this.setupAddDeviceButtonListeners();
+    }
+
+    // Setup event delegation for add device buttons
+    setupAddDeviceButtonListeners() {
+        const devicesList = document.getElementById('availableDevicesList');
+        
+        // Remove existing listeners to avoid duplicates
+        devicesList.removeEventListener('click', this.handleAddDeviceClick);
+        
+        // Add new listener with event delegation
+        this.handleAddDeviceClick = (e) => {
+            if (e.target.closest('.add-device-btn')) {
+                e.preventDefault();
+                const button = e.target.closest('.add-device-btn');
+                const mac = button.getAttribute('data-mac');
+                if (mac) {
+                    this.addDeviceToParentalControls(mac);
+                }
+            }
+        };
+        
+        devicesList.addEventListener('click', this.handleAddDeviceClick);
     }
 
     // Add device to parental controls
@@ -1313,7 +1436,21 @@ class UniFiSentinel {
     // Close add device modal
     closeAddDeviceModal() {
         document.getElementById('addDeviceModal').style.display = 'none';
+        
+        // Clear search and filters
         document.getElementById('deviceSearchInput').value = '';
+        document.getElementById('statusFilter').value = 'all';
+        document.getElementById('connectionFilter').value = 'all';
+        document.getElementById('vendorFilter').value = 'all';
+        
+        // Clean up event listeners
+        const devicesList = document.getElementById('availableDevicesList');
+        if (this.handleAddDeviceClick) {
+            devicesList.removeEventListener('click', this.handleAddDeviceClick);
+        }
+        
+        // Clear data
+        this.allAvailableDevices = null;
     }
 
     // Close device management modal

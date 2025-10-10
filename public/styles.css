@@ -1210,6 +1210,10 @@ footer p {
     margin: 20px 0;
 }
 
+.device-filters {
+    margin-bottom: 20px;
+}
+
 .search-input {
     width: 100%;
     padding: 12px;
@@ -1218,6 +1222,41 @@ footer p {
     background: var(--bg-secondary);
     color: var(--text-primary);
     margin-bottom: 15px;
+}
+
+.filter-controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 15px;
+}
+
+.filter-select {
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    min-width: 120px;
+}
+
+.filter-select:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+}
+
+.device-count-info {
+    margin-bottom: 15px;
+    padding: 8px 12px;
+    background: rgba(52, 152, 219, 0.1);
+    border: 1px solid rgba(52, 152, 219, 0.2);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    text-align: center;
 }
 
 .available-devices-list {

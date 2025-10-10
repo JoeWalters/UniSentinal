@@ -336,7 +336,31 @@
             </div>
             <div class="modal-body">
                 <div class="device-selection">
-                    <input type="text" id="deviceSearchInput" placeholder="Search devices..." class="search-input">
+                    <div class="device-filters">
+                        <input type="text" id="deviceSearchInput" placeholder="Search devices..." class="search-input">
+                        <div class="filter-controls">
+                            <select id="statusFilter" class="filter-select">
+                                <option value="all">All Status</option>
+                                <option value="online">Online Only</option>
+                                <option value="offline">Offline Only</option>
+                            </select>
+                            <select id="connectionFilter" class="filter-select">
+                                <option value="all">All Connections</option>
+                                <option value="wifi">WiFi Only</option>
+                                <option value="wired">Wired Only</option>
+                            </select>
+                            <select id="vendorFilter" class="filter-select">
+                                <option value="all">All Vendors</option>
+                                <!-- Vendor options will be populated dynamically -->
+                            </select>
+                            <button id="clearFiltersBtn" class="btn btn-small btn-secondary">
+                                <i class="fas fa-times"></i> Clear
+                            </button>
+                        </div>
+                    </div>
+                    <div class="device-count-info">
+                        <span id="deviceCountInfo">Loading devices...</span>
+                    </div>
                     <div id="availableDevicesList" class="available-devices-list">
                         <!-- Available devices will be populated here -->
                     </div>
