@@ -25,6 +25,26 @@ class UniFiSentinel {
         document.getElementById('settingsBtn').addEventListener('click', () => this.showSettingsModal());
         document.getElementById('diagnosticsToggle').addEventListener('click', () => this.toggleDiagnostics());
 
+        // Tab navigation events
+        document.querySelectorAll('.tab-button').forEach(button => {
+            button.addEventListener('click', (e) => {
+                const tabName = e.target.closest('.tab-button').getAttribute('data-tab');
+                this.switchTab(tabName);
+            });
+        });
+
+        // Parental controls events
+        const addDeviceBtn = document.getElementById('addDeviceBtn');
+        const refreshParentalBtn = document.getElementById('refreshParentalBtn');
+        
+        if (addDeviceBtn) {
+            addDeviceBtn.addEventListener('click', () => this.showAddDeviceModal());
+        }
+        
+        if (refreshParentalBtn) {
+            refreshParentalBtn.addEventListener('click', () => this.loadParentalControlsData());
+        }
+
         // Modal events
         document.getElementById('closeModal').addEventListener('click', () => this.closeModal());
         document.getElementById('modalCloseBtn').addEventListener('click', () => this.closeModal());
@@ -955,6 +975,149 @@ class UniFiSentinel {
         `).join('');
 
         logsContent.innerHTML = logEntries;
+    }
+
+    // Tab switching functionality
+    switchTab(tabName) {
+        // Update tab buttons
+        document.querySelectorAll('.tab-button').forEach(button => {
+            button.classList.remove('active');
+        });
+        document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+        
+        // Update tab content
+        document.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.remove('active');
+        });
+        document.getElementById(`${tabName}-tab`).classList.add('active');
+        
+        // Load data for parental controls tab
+        if (tabName === 'parental') {
+            this.loadParentalControlsData();
+        }
+    }
+
+    // Load parental controls data
+    async loadParentalControlsData() {
+        try {
+            // Load managed devices
+            const response = await fetch('/api/parental/devices/managed');
+            if (!response.ok) throw new Error('Failed to fetch managed devices');
+            
+            const managedDevices = await response.json();
+            this.renderManagedDevices(managedDevices);
+            this.updateParentalStats(managedDevices);
+        } catch (error) {
+            console.error('Error loading parental controls data:', error);
+            this.showError('Failed to load parental controls data');
+        }
+    }
+
+    // Render managed devices
+    renderManagedDevices(devices) {
+        const grid = document.getElementById('managedDevicesGrid');
+        const noDevices = document.getElementById('noManagedDevices');
+        
+        if (!devices || devices.length === 0) {
+            grid.style.display = 'none';
+            noDevices.style.display = 'block';
+            return;
+        }
+        
+        grid.style.display = 'grid';
+        noDevices.style.display = 'none';
+        
+        grid.innerHTML = devices.map(device => `
+            <div class="managed-device-card">
+                <div class="device-header">
+                    <div class="device-name">${device.device_name}</div>
+                    <div class="device-status ${device.is_blocked ? 'blocked' : 'allowed'}">
+                        ${device.is_blocked ? 'Blocked' : 'Allowed'}
+                    </div>
+                </div>
+                <div class="device-details">
+                    <div class="device-info">
+                        <span class="label">MAC:</span>
+                        <span class="value">${device.mac}</span>
+                    </div>
+                    <div class="device-info">
+                        <span class="label">IP:</span>
+                        <span class="value">${device.ip || 'N/A'}</span>
+                    </div>
+                    ${device.time_remaining !== undefined ? `
+                        <div class="device-info">
+                            <span class="label">Time Left:</span>
+                            <span class="value">${device.time_remaining === null ? 'Unlimited' : device.time_remaining + ' min'}</span>
+                        </div>
+                    ` : ''}
+                </div>
+                <div class="device-actions">
+                    <button class="btn btn-small ${device.is_blocked ? 'btn-success' : 'btn-danger'}" 
+                            onclick="app.toggleDeviceBlock('${device.mac}', ${device.is_blocked})">
+                        <i class="fas ${device.is_blocked ? 'fa-check' : 'fa-ban'}"></i>
+                        ${device.is_blocked ? 'Unblock' : 'Block'}
+                    </button>
+                    <button class="btn btn-small btn-secondary" onclick="app.manageDevice('${device.mac}')">
+                        <i class="fas fa-cog"></i> Manage
+                    </button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // Update parental control statistics
+    updateParentalStats(devices) {
+        const blockedCount = devices.filter(d => d.is_blocked).length;
+        const scheduledCount = devices.filter(d => d.schedule_data && d.schedule_data !== '{}').length;
+        const timeLimitedCount = devices.filter(d => d.daily_time_limit && d.daily_time_limit > 0).length;
+        
+        document.getElementById('blockedDevicesCount').textContent = blockedCount;
+        document.getElementById('scheduledDevicesCount').textContent = scheduledCount;
+        document.getElementById('timeLimitedDevicesCount').textContent = timeLimitedCount;
+    }
+
+    // Toggle device block status
+    async toggleDeviceBlock(mac, isCurrentlyBlocked) {
+        try {
+            const endpoint = isCurrentlyBlocked ? 'unblock' : 'block';
+            const response = await fetch(`/api/parental/devices/${mac}/${endpoint}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    reason: 'manual'
+                })
+            });
+            
+            if (!response.ok) throw new Error(`Failed to ${endpoint} device`);
+            
+            this.showNotification(`Device ${isCurrentlyBlocked ? 'unblocked' : 'blocked'} successfully`, 'success');
+            await this.loadParentalControlsData();
+        } catch (error) {
+            console.error('Error toggling device block:', error);
+            this.showError(`Failed to ${isCurrentlyBlocked ? 'unblock' : 'block'} device`);
+        }
+    }
+
+    // Show add device modal
+    async showAddDeviceModal() {
+        try {
+            const response = await fetch('/api/parental/devices/available');
+            if (!response.ok) throw new Error('Failed to fetch available devices');
+            
+            const devices = await response.json();
+            // TODO: Implement add device modal functionality
+            this.showNotification('Add Device feature coming soon!', 'info');
+        } catch (error) {
+            console.error('Error loading available devices:', error);
+            this.showError('Failed to load available devices');
+        }
+    }
+
+    // Manage device (placeholder for future modal)
+    manageDevice(mac) {
+        this.showNotification('Device management modal coming soon!', 'info');
     }
 
     // Diagnostics Accordion Toggle
