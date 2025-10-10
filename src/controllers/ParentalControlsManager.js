@@ -123,7 +123,7 @@ class ParentalControlsManager {
             console.log(`ParentalControlsManager: Found ${managedDevices.length} managed devices in database`);
             
             // Try to get current device data from UniFi controller, but don't fail if it's not configured
-            let currentDevices = new Map();
+            let currentDevices = new Set(); // getAllKnownDevices returns a Set, not a Map
             try {
                 if (this.unifiController.isConfigured()) {
                     console.log('ParentalControlsManager: UniFi controller is configured, fetching current devices...');
@@ -138,14 +138,15 @@ class ParentalControlsManager {
             }
             
             return managedDevices.map(device => {
-                const currentDevice = currentDevices.get(device.mac);
+                // Check if device MAC is in the current devices Set (device is online)
+                const isOnline = currentDevices.has(device.mac.toLowerCase());
                 const scheduleData = device.schedule_data ? JSON.parse(device.schedule_data) : null;
                 
                 return {
                     ...device,
-                    isOnline: currentDevice ? true : false,
-                    currentIp: currentDevice ? currentDevice.ip : device.ip, // Fallback to stored IP
-                    lastSeen: currentDevice ? currentDevice.last_seen : null,
+                    isOnline: isOnline,
+                    currentIp: device.ip, // Use stored IP since getAllKnownDevices only returns MAC addresses
+                    lastSeen: isOnline ? new Date().toISOString() : null,
                     schedule: scheduleData,
                     timeRemaining: this.calculateTimeRemaining(device),
                     shouldBeBlocked: this.shouldDeviceBeBlocked(device, scheduleData)
