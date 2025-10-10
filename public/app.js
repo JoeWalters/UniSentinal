@@ -1152,7 +1152,12 @@ class UniFiSentinel {
             // Reset stats to show zeros instead of errors
             document.getElementById('blockedDevicesCount').textContent = '-';
             document.getElementById('scheduledDevicesCount').textContent = '-';
-            document.getElementById('timeLimitedDevicesCount').textContent = '-';
+            
+            // Time limited element removed, check if it exists
+            const timeLimitedElement = document.getElementById('timeLimitedDevicesCount');
+            if (timeLimitedElement) {
+                timeLimitedElement.textContent = '-';
+            }
         }
     }
 
@@ -1298,8 +1303,12 @@ class UniFiSentinel {
         
         document.getElementById('blockedDevicesCount').textContent = blockedCount;
         document.getElementById('scheduledDevicesCount').textContent = scheduledCount;
-        // Time limits removed - not realistic to enforce
-        document.getElementById('timeLimitedDevicesCount').textContent = '0';
+        
+        // Time limits removed - element no longer exists in HTML
+        const timeLimitedElement = document.getElementById('timeLimitedDevicesCount');
+        if (timeLimitedElement) {
+            timeLimitedElement.textContent = '0';
+        }
     }
 
     // Toggle device block status
