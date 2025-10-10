@@ -68,10 +68,31 @@ async function testUnifiConnection() {
                 }
             });
         });
+
+        // Test getting blocked devices (users)
+        console.log('4️⃣ Testing blocked devices retrieval...');
+        
+        try {
+            const blockedDevices = await new Promise((resolve, reject) => {
+                controller.listUsers(site, (error, data) => {
+                    if (error) {
+                        console.log('⚠️  Could not get blocked devices (this may be normal):', error.message);
+                        resolve([]);
+                    } else {
+                        const users = Array.isArray(data) ? data : (data && data.data ? data.data : []);
+                        const blocked = users.filter(device => device.blocked === true);
+                        console.log(`✅ Found ${blocked.length} blocked devices`);
+                        resolve(blocked);
+                    }
+                });
+            });
+        } catch (error) {
+            console.log('⚠️  Blocked devices test failed (this may be normal):', error.message);
+        }
         
         // Show sample client data
         if (clients.length > 0) {
-            console.log('4️⃣ Sample client data:');
+            console.log('5️⃣ Sample client data:');
             const sample = clients.slice(0, 2);
             sample.forEach((client, index) => {
                 console.log(`Client ${index + 1}:`);

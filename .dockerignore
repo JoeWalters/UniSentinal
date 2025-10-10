@@ -12,3 +12,9 @@ coverage
 .github
 data/
 config/
+test-*.js
+test-*.sh
+*_FIX.md
+*_SUMMARY.md
+API_FIX_SUMMARY.md
+DOCKER_ARM64_FIX.md

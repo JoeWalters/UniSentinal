@@ -1,0 +1,97 @@
+name: Build AMD64 Only
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build'
+        required: false
+        default: 'test'
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: unisentinal
+
+jobs:
+  build-amd64:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Generate version number
+      id: version
+      run: |
+        # Use input tag or generate timestamp
+        if [ -n "${{ github.event.inputs.tag }}" ]; then
+          VERSION="${{ github.event.inputs.tag }}"
+        else
+          VERSION=$(date '+%Y%m%d%H%M%S')
+        fi
+        
+        PACKAGE_VERSION=$(node -p "require('./package.json').version")
+        COMMIT_HASH=${GITHUB_SHA::7}
+        FULL_VERSION="${PACKAGE_VERSION}-${VERSION}"
+        
+        echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+        echo "package_version=${PACKAGE_VERSION}" >> $GITHUB_OUTPUT
+        echo "full_version=${FULL_VERSION}" >> $GITHUB_OUTPUT
+        echo "commit_hash=${COMMIT_HASH}" >> $GITHUB_OUTPUT
+        echo "build_date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+
+    - name: Update version in app
+      run: |
+        cat > public/version.json << EOF
+        {
+          "version": "${{ steps.version.outputs.full_version }}",
+          "packageVersion": "${{ steps.version.outputs.package_version }}",
+          "timestampVersion": "${{ steps.version.outputs.VERSION }}",
+          "commitHash": "${{ steps.version.outputs.commit_hash }}",
+          "buildDate": "${{ steps.version.outputs.build_date }}"
+        }
+        EOF
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=raw,value=${{ steps.version.outputs.VERSION }}
+          type=raw,value=test-amd64
+
+    - name: Build and push Docker image (AMD64 only)
+      uses: docker/build-push-action@v5
+      timeout-minutes: 30
+      with:
+        context: .
+        platforms: linux/amd64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        build-args: |
+          BUILD_DATE=${{ steps.version.outputs.build_date }}
+          VERSION=${{ steps.version.outputs.full_version }}
+          VCS_REF=${{ steps.version.outputs.commit_hash }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Test image
+      run: |
+        echo "🧪 Testing built image..."
+        docker run --rm ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION }} node --version
+        echo "✅ Image test completed successfully!"

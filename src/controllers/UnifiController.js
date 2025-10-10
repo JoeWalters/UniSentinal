@@ -323,6 +323,96 @@ class UnifiController {
         }
     }
 
+    // Get all known devices (MAC addresses) from UniFi controller
+    async getAllKnownDevices() {
+        try {
+            await this.ensureLoggedIn();
+            
+            // Get all client devices using Art of WiFi library
+            const clients = await this.getAllClients();
+            const knownDevices = new Set();
+
+            // Add all client MAC addresses to the set
+            clients.forEach(client => {
+                if (client.mac) {
+                    knownDevices.add(client.mac.toLowerCase());
+                }
+            });
+
+            console.log(`Found ${knownDevices.size} total known devices in UniFi controller`);
+            return knownDevices;
+        } catch (error) {
+            console.error('Error fetching all known devices:', error.message);
+            throw error;
+        }
+    }
+
+    // Get detailed client device information for parental controls
+    async getAllClientDevices() {
+        try {
+            await this.ensureLoggedIn();
+            
+            // Get all clients with full details using Art of WiFi
+            const clients = await this.getAllClients();
+            
+            // Transform data to match expected format
+            const clientDevices = clients.map(client => ({
+                mac: client.mac,
+                hostname: client.hostname || client.name || 'Unknown',
+                name: client.name || client.hostname || 'Unknown Device',
+                ip: client.ip || null,
+                last_seen: client.last_seen || null,
+                first_seen: client.first_seen || null,
+                is_online: client.is_online || false,
+                vendor: client.oui || 'Unknown',
+                blocked: client.blocked || false
+            }));
+
+            console.log(`Retrieved ${clientDevices.length} detailed client devices`);
+            return clientDevices;
+        } catch (error) {
+            console.error('Error fetching detailed client devices:', error.message);
+            throw error;
+        }
+    }
+
+    // Get blocked devices list using Art of WiFi
+    async getBlockedDevices() {
+        if (!this.isConfigured()) {
+            throw new Error('UniFi controller not configured');
+        }
+
+        try {
+            await this.ensureLoggedIn();
+            
+            return new Promise((resolve, reject) => {
+                // Use the Art of WiFi list users method to get device info including blocked status
+                this.controller.listUsers(this.site, (error, data) => {
+                    if (error) {
+                        console.error('Error getting blocked devices:', error);
+                        reject(new Error(`Failed to get blocked devices: ${error.message || error}`));
+                    } else {
+                        const users = Array.isArray(data) ? data : (data && data.data ? data.data : []);
+                        const blockedDevices = users.filter(device => device.blocked === true);
+                        
+                        const formattedBlocked = blockedDevices.map(device => ({
+                            mac: device.mac,
+                            hostname: device.hostname || device.name || 'Unknown',
+                            blocked: device.blocked,
+                            blocked_at: device.blocked_at || null
+                        }));
+
+                        console.log(`Found ${formattedBlocked.length} blocked devices`);
+                        resolve(formattedBlocked);
+                    }
+                });
+            });
+        } catch (error) {
+            console.error('Error getting blocked devices:', error.message);
+            throw error;
+        }
+    }
+
     // Check user permissions - simplified for Art of WiFi client
     async checkUserPermissions() {
         if (!this.isConfigured()) {
