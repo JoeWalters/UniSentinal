@@ -1246,6 +1246,63 @@ footer p {
     border-bottom: none;
 }
 
+.available-device-item .device-info {
+    flex: 1;
+}
+
+.available-device-item .device-name {
+    color: var(--text-primary);
+    font-weight: 600;
+    margin-bottom: 8px;
+    font-size: 1rem;
+}
+
+.available-device-item .secondary-name {
+    color: var(--text-secondary);
+    font-weight: 400;
+    font-size: 0.9rem;
+    margin-left: 5px;
+}
+
+.available-device-item .device-details {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.available-device-item .detail-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.available-device-item .detail-row .label {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    min-width: 70px;
+    font-weight: 500;
+}
+
+.available-device-item .detail-row .status,
+.available-device-item .detail-row .connection,
+.available-device-item .detail-row .mac,
+.available-device-item .detail-row .ip,
+.available-device-item .detail-row .vendor {
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    font-family: 'Segoe UI', monospace;
+}
+
+.available-device-item .detail-row .status i,
+.available-device-item .detail-row .connection i {
+    margin-right: 4px;
+}
+
+.available-device-item .device-actions {
+    display: flex;
+    align-items: center;
+}
+
 .available-device-info h5 {
     color: var(--text-primary);
     margin-bottom: 5px;

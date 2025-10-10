@@ -1,15 +1,26 @@
 # Enhanced Parental Controls Implementation
 
+## Latest Update: Fixed Device Display Issues
+
+### Issues Resolved
+- **Fixed "Unknown Device" problem**: Now properly extracts device names from UniFi controller
+- **Improved device information**: Shows meaningful details like online status, connection type, IP addresses
+- **Client device filtering**: Filters out infrastructure devices (APs, switches) to show only client devices
+- **Better device naming**: Uses user aliases, hostnames, or generates meaningful fallback names
+
 ## Overview
 I've implemented a comprehensive parental controls system similar to Google Family Link that allows you to manage UniFi router devices with blocking, scheduling, and time limit features.
 
 ## Features Implemented
 
-### 1. Add Device Functionality
-- **Device Selection Modal**: Shows all available devices from your UniFi controller
-- **Search Functionality**: Filter devices by name, MAC address, or vendor
-- **One-Click Adding**: Add any UniFi device to parental controls management
-- **Automatic Refresh**: Updates the parental controls list after adding devices
+### 1. Enhanced Add Device Functionality
+- **Smart Device Detection**: Shows only client devices (phones, tablets, computers, etc.)
+- **Rich Device Information**: Displays device names, online status, connection type (WiFi/Wired), IP addresses, vendor info
+- **Intelligent Naming**: Uses UniFi user aliases or hostnames for meaningful device names
+- **Advanced Search**: Filter devices by name, MAC address, IP, or vendor
+- **Infrastructure Filtering**: Automatically excludes access points, switches, and other network equipment
+- **Online Status**: Shows which devices are currently connected
+- **Connection Type**: Indicates whether devices are connected via WiFi or Ethernet
 
 ### 2. Device Management System
 - **Comprehensive Management Modal**: Complete device control interface

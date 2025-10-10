@@ -1191,10 +1191,19 @@ class UniFiSentinel {
         // Add search functionality
         searchInput.oninput = (e) => {
             const searchTerm = e.target.value.toLowerCase();
-            const filtered = availableDevices.filter(device => 
-                (device.hostname || device.mac).toLowerCase().includes(searchTerm) ||
-                (device.vendor || '').toLowerCase().includes(searchTerm)
-            );
+            const filtered = availableDevices.filter(device => {
+                const displayName = (device.user_alias || device.hostname || '').toLowerCase();
+                const hostname = (device.hostname || '').toLowerCase();
+                const mac = device.mac.toLowerCase();
+                const vendor = (device.vendor || '').toLowerCase();
+                const ip = (device.ip || '').toLowerCase();
+                
+                return displayName.includes(searchTerm) ||
+                       hostname.includes(searchTerm) ||
+                       mac.includes(searchTerm) ||
+                       vendor.includes(searchTerm) ||
+                       ip.includes(searchTerm);
+            });
             this.renderFilteredDevices(filtered);
         };
     }
@@ -1203,21 +1212,67 @@ class UniFiSentinel {
     renderFilteredDevices(devices) {
         const devicesList = document.getElementById('availableDevicesList');
         
-        devicesList.innerHTML = devices.map(device => `
-            <div class="available-device-item" data-mac="${device.mac}">
-                <div class="device-info">
-                    <div class="device-name">${device.hostname || 'Unknown Device'}</div>
-                    <div class="device-details">
-                        <span class="mac">${device.mac}</span>
-                        <span class="ip">${device.ip || 'No IP'}</span>
-                        <span class="vendor">${device.vendor || 'Unknown Vendor'}</span>
+        devicesList.innerHTML = devices.map(device => {
+            // Determine the best display name
+            const displayName = device.user_alias || device.hostname || `Device-${device.mac.slice(-6)}`;
+            const secondaryName = device.user_alias && device.hostname ? device.hostname : null;
+            
+            // Format vendor name
+            const vendor = device.vendor || 'Unknown Vendor';
+            
+            // Online status
+            const statusIcon = device.is_online ? 
+                '<i class="fas fa-circle" style="color: #28a745;"></i>' : 
+                '<i class="fas fa-circle" style="color: #6c757d;"></i>';
+            
+            const statusText = device.is_online ? 'Online' : 'Offline';
+            
+            // Connection type
+            const connectionType = device.is_wired ? 'Wired' : 'WiFi';
+            const connectionIcon = device.is_wired ? 
+                '<i class="fas fa-ethernet"></i>' : 
+                '<i class="fas fa-wifi"></i>';
+
+            return `
+                <div class="available-device-item" data-mac="${device.mac}">
+                    <div class="device-info">
+                        <div class="device-name">
+                            ${displayName}
+                            ${secondaryName ? `<span class="secondary-name">(${secondaryName})</span>` : ''}
+                        </div>
+                        <div class="device-details">
+                            <div class="detail-row">
+                                <span class="label">Status:</span>
+                                <span class="status">${statusIcon} ${statusText}</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="label">Connection:</span>
+                                <span class="connection">${connectionIcon} ${connectionType}</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="label">MAC:</span>
+                                <span class="mac">${device.mac.toUpperCase()}</span>
+                            </div>
+                            ${device.ip ? `
+                                <div class="detail-row">
+                                    <span class="label">IP:</span>
+                                    <span class="ip">${device.ip}</span>
+                                </div>
+                            ` : ''}
+                            <div class="detail-row">
+                                <span class="label">Vendor:</span>
+                                <span class="vendor">${vendor}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="device-actions">
+                        <button class="btn btn-primary btn-small" onclick="app.addDeviceToParentalControls('${device.mac}')">
+                            <i class="fas fa-plus"></i> Add to Controls
+                        </button>
                     </div>
                 </div>
-                <button class="btn btn-primary btn-small" onclick="app.addDeviceToParentalControls('${device.mac}')">
-                    <i class="fas fa-plus"></i> Add
-                </button>
-            </div>
-        `).join('');
+            `;
+        }).join('');
     }
 
     // Add device to parental controls
@@ -1226,9 +1281,12 @@ class UniFiSentinel {
             const device = this.allAvailableDevices.find(d => d.mac === mac);
             if (!device) throw new Error('Device not found');
 
+            // Use the best available name for the device
+            const deviceName = device.user_alias || device.hostname || `Device-${device.mac.slice(-6)}`;
+
             const deviceData = {
                 mac: device.mac,
-                device_name: device.hostname || 'Unknown Device',
+                device_name: deviceName,
                 ip: device.ip,
                 vendor: device.vendor
             };

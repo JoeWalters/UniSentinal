@@ -16,11 +16,11 @@ class ParentalControlsManager {
     // Get all devices from UniFi controller for parental control selection
     async getAvailableDevices() {
         try {
-            const allDevices = await this.unifiController.getAllKnownDevices();
+            const allDevices = await this.unifiController.getAllClientDevices();
             const managedDevices = await this.db.getManagedDevices();
             const managedMacs = new Set(managedDevices.map(d => d.mac));
 
-            return Array.from(allDevices.values()).map(device => ({
+            return allDevices.map(device => ({
                 ...device,
                 isManaged: managedMacs.has(device.mac)
             }));

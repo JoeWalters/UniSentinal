@@ -137,6 +137,104 @@ class UnifiController {
         }
     }
 
+    // Get detailed client device information for parental controls
+    async getAllClientDevices() {
+        try {
+            if (!this.cookies) {
+                await this.login();
+            }
+
+            // Get both active and historical client data
+            const [activeClients, allUsers] = await Promise.all([
+                // Currently connected/active clients with full details
+                this.makeAuthenticatedRequest(`/proxy/network/api/s/${this.site}/stat/sta`),
+                // All user devices (includes offline devices with aliases)
+                this.makeAuthenticatedRequest(`/proxy/network/api/s/${this.site}/list/user`)
+            ]);
+
+            const deviceMap = new Map();
+
+            // Process active clients first (they have the most current data)
+            if (activeClients.data) {
+                activeClients.data.forEach(client => {
+                    const mac = client.mac.toLowerCase();
+                    deviceMap.set(mac, {
+                        mac: mac,
+                        hostname: client.hostname || client.name || null,
+                        ip: client.ip || null,
+                        vendor: client.oui || null,
+                        is_online: true,
+                        is_wired: client.is_wired || false,
+                        ap_mac: client.ap_mac || null,
+                        network: client.network || null,
+                        signal: client.signal || null,
+                        tx_bytes: client.tx_bytes || 0,
+                        rx_bytes: client.rx_bytes || 0,
+                        last_seen: new Date().toISOString(),
+                        user_alias: null // Will be filled from user data
+                    });
+                });
+            }
+
+            // Process all users to get aliases and historical devices
+            if (allUsers.data) {
+                allUsers.data.forEach(user => {
+                    const mac = user.mac.toLowerCase();
+                    
+                    if (deviceMap.has(mac)) {
+                        // Update existing device with user alias
+                        const device = deviceMap.get(mac);
+                        device.user_alias = user.name || user.alias || null;
+                        device.hostname = device.hostname || user.hostname || null;
+                    } else {
+                        // Add offline/historical device
+                        deviceMap.set(mac, {
+                            mac: mac,
+                            hostname: user.hostname || user.name || null,
+                            ip: user.fixed_ip || null,
+                            vendor: user.oui || null,
+                            is_online: false,
+                            is_wired: user.is_wired || false,
+                            ap_mac: null,
+                            network: user.network || null,
+                            signal: null,
+                            tx_bytes: user.tx_bytes || 0,
+                            rx_bytes: user.rx_bytes || 0,
+                            last_seen: user.last_seen ? new Date(user.last_seen * 1000).toISOString() : null,
+                            user_alias: user.name || user.alias || null
+                        });
+                    }
+                });
+            }
+
+            const devices = Array.from(deviceMap.values());
+            
+            // Filter out infrastructure devices (APs, switches, etc.) and keep only client devices
+            const clientDevices = devices.filter(device => {
+                // Skip devices that look like infrastructure
+                const hostname = (device.hostname || '').toLowerCase();
+                const alias = (device.user_alias || '').toLowerCase();
+                
+                // Skip common infrastructure device names
+                const infrastructureKeywords = ['ap-', 'switch', 'gateway', 'router', 'unifi', 'ubnt', 'access-point'];
+                const isInfrastructure = infrastructureKeywords.some(keyword => 
+                    hostname.includes(keyword) || alias.includes(keyword)
+                );
+                
+                // Skip devices without meaningful names that are likely infrastructure
+                const hasUsefulName = device.hostname || device.user_alias;
+                
+                return !isInfrastructure && hasUsefulName;
+            });
+
+            console.log(`Found ${clientDevices.length} client devices (filtered from ${devices.length} total devices)`);
+            return clientDevices;
+        } catch (error) {
+            console.error('Error fetching client devices:', error.message);
+            throw error;
+        }
+    }
+
     async scanForNewDevices() {
         try {
             // Get currently active/connected clients
