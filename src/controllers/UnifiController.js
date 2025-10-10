@@ -448,26 +448,47 @@ class UnifiController {
         }
 
         try {
-            await this.login();
+            console.log(`Attempting to block device: ${mac}`);
             
-            const response = await this.axiosInstance.post(
-                `${this.baseUrl}/api/s/${this.site}/cmd/stamgr`,
+            // Use makeAuthenticatedRequest which handles auth and retries
+            const result = await this.makeAuthenticatedRequest(
+                `/api/s/${this.site}/cmd/stamgr`,
+                'POST',
                 {
                     cmd: 'block-sta',
                     mac: mac.toLowerCase()
-                },
-                {
-                    headers: {
-                        'Cookie': this.cookies,
-                        'Content-Type': 'application/json'
-                    }
                 }
             );
 
-            console.log(`Device ${mac} blocked successfully`);
-            return response.data?.meta?.rc === 'ok';
+            console.log(`Block device response:`, result);
+            
+            if (result.meta && result.meta.rc === 'ok') {
+                console.log(`Device ${mac} blocked successfully`);
+                return true;
+            } else {
+                const errorMessage = result.meta?.msg || 'Unknown error from UniFi controller';
+                console.error(`Failed to block device ${mac}:`, errorMessage);
+                throw new Error(`UniFi controller error: ${errorMessage}`);
+            }
         } catch (error) {
             console.error('Error blocking device:', error.message);
+            
+            // Provide more specific error messages
+            if (error.response) {
+                const status = error.response.status;
+                const responseData = error.response.data;
+                
+                if (status === 403) {
+                    throw new Error('Access denied. Check UniFi user permissions for device management.');
+                } else if (status === 401) {
+                    throw new Error('Authentication failed. Please check UniFi credentials.');
+                } else if (status === 404) {
+                    throw new Error('Device not found or UniFi site incorrect.');
+                } else {
+                    throw new Error(`UniFi controller returned ${status}: ${responseData?.error?.message || error.message}`);
+                }
+            }
+            
             throw error;
         }
     }
@@ -479,26 +500,47 @@ class UnifiController {
         }
 
         try {
-            await this.login();
+            console.log(`Attempting to unblock device: ${mac}`);
             
-            const response = await this.axiosInstance.post(
-                `${this.baseUrl}/api/s/${this.site}/cmd/stamgr`,
+            // Use makeAuthenticatedRequest which handles auth and retries
+            const result = await this.makeAuthenticatedRequest(
+                `/api/s/${this.site}/cmd/stamgr`,
+                'POST',
                 {
                     cmd: 'unblock-sta',
                     mac: mac.toLowerCase()
-                },
-                {
-                    headers: {
-                        'Cookie': this.cookies,
-                        'Content-Type': 'application/json'
-                    }
                 }
             );
 
-            console.log(`Device ${mac} unblocked successfully`);
-            return response.data?.meta?.rc === 'ok';
+            console.log(`Unblock device response:`, result);
+            
+            if (result.meta && result.meta.rc === 'ok') {
+                console.log(`Device ${mac} unblocked successfully`);
+                return true;
+            } else {
+                const errorMessage = result.meta?.msg || 'Unknown error from UniFi controller';
+                console.error(`Failed to unblock device ${mac}:`, errorMessage);
+                throw new Error(`UniFi controller error: ${errorMessage}`);
+            }
         } catch (error) {
             console.error('Error unblocking device:', error.message);
+            
+            // Provide more specific error messages
+            if (error.response) {
+                const status = error.response.status;
+                const responseData = error.response.data;
+                
+                if (status === 403) {
+                    throw new Error('Access denied. Check UniFi user permissions for device management.');
+                } else if (status === 401) {
+                    throw new Error('Authentication failed. Please check UniFi credentials.');
+                } else if (status === 404) {
+                    throw new Error('Device not found or UniFi site incorrect.');
+                } else {
+                    throw new Error(`UniFi controller returned ${status}: ${responseData?.error?.message || error.message}`);
+                }
+            }
+            
             throw error;
         }
     }

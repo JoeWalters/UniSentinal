@@ -8,6 +8,7 @@ class UniFiSentinel {
 
     init() {
         this.bindEvents();
+        this.setupScheduleEventListeners(); // Setup schedule management event listeners
         this.initializeDarkMode(); // Initialize dark mode before loading content
         this.loadDevices();
         this.checkStatus();
@@ -1286,6 +1287,29 @@ class UniFiSentinel {
         grid.addEventListener('click', this.handleManagedDeviceClick);
     }
 
+    // Setup event listeners for schedule management buttons
+    setupScheduleEventListeners() {
+        document.addEventListener('click', (e) => {
+            const button = e.target.closest('button');
+            if (!button) return;
+            
+            if (button.classList.contains('remove-time-period-btn')) {
+                e.preventDefault();
+                const day = button.getAttribute('data-day');
+                const period = button.getAttribute('data-period');
+                if (day && period !== null) {
+                    this.removeTimePeriod(day, parseInt(period));
+                }
+            } else if (button.classList.contains('add-time-period-btn')) {
+                e.preventDefault();
+                const day = button.getAttribute('data-day');
+                if (day) {
+                    this.addTimePeriod(day);
+                }
+            }
+        });
+    }
+
     // Update parental control statistics
     updateParentalStats(devices) {
         const blockedCount = devices.filter(d => d.is_blocked).length;
@@ -1847,13 +1871,13 @@ class UniFiSentinel {
                                 <input type="time" value="${period.start}" data-day="${day}" data-period="${periodIndex}" data-type="start">
                                 <span>to</span>
                                 <input type="time" value="${period.end}" data-day="${day}" data-period="${periodIndex}" data-type="end">
-                                <button class="btn-small btn-danger" onclick="app.removeTimePeriod('${day}', ${periodIndex})">
+                                <button class="btn-small btn-danger remove-time-period-btn" data-day="${day}" data-period="${periodIndex}">
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </div>
                         `).join('')}
                     </div>
-                    <button class="btn btn-small btn-secondary" onclick="app.addTimePeriod('${day}')">
+                    <button class="btn btn-small btn-secondary add-time-period-btn" data-day="${day}">
                         <i class="fas fa-plus"></i> Add Blocked Time
                     </button>
                 </div>
@@ -1875,7 +1899,7 @@ class UniFiSentinel {
             <input type="time" value="22:00" data-day="${day}" data-period="${periodIndex}" data-type="start">
             <span>to</span>
             <input type="time" value="08:00" data-day="${day}" data-period="${periodIndex}" data-type="end">
-            <button class="btn-small btn-danger" onclick="app.removeTimePeriod('${day}', ${periodIndex})">
+            <button class="btn-small btn-danger remove-time-period-btn" data-day="${day}" data-period="${periodIndex}">
                 <i class="fas fa-trash"></i>
             </button>
         `;
@@ -1900,7 +1924,9 @@ class UniFiSentinel {
                     input.setAttribute('data-period', index);
                 });
                 
-                button.setAttribute('onclick', `app.removeTimePeriod('${day}', ${index})`);
+                button.setAttribute('data-day', day);
+                button.setAttribute('data-period', index);
+                button.classList.add('remove-time-period-btn');
             });
         }
     }

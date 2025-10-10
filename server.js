@@ -20,12 +20,23 @@ const UnifiController = require('./src/controllers/UnifiController');
 const DatabaseManager = require('./src/database/DatabaseManager');
 const ParentalControlsManager = require('./src/controllers/ParentalControlsManager');
 const Logger = require('./src/utils/Logger');
+const CredentialManager = require('./src/utils/CredentialManager');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Initialize logger
+// Initialize logger and credential manager
 const logger = new Logger();
+const credentialManager = new CredentialManager();
+
+// Decrypt environment variables that were loaded from .env
+const sensitiveFields = ['UNIFI_PASSWORD'];
+sensitiveFields.forEach(field => {
+    if (process.env[field] && credentialManager.isEncrypted(process.env[field])) {
+        console.log(`[SECURITY] Decrypting environment variable: ${field}`);
+        process.env[field] = credentialManager.decrypt(process.env[field]);
+    }
+});
 
 // Middleware
 app.use(helmet({
@@ -291,7 +302,9 @@ app.get('/api/settings', (req, res) => {
             UNIFI_USERNAME: process.env.UNIFI_USERNAME,
             UNIFI_SITE: process.env.UNIFI_SITE,
             PORT: process.env.PORT,
-            SCAN_INTERVAL: process.env.SCAN_INTERVAL || '30'
+            SCAN_INTERVAL: process.env.SCAN_INTERVAL || '30',
+            // Indicate if password is set without revealing it
+            UNIFI_PASSWORD_SET: !!(process.env.UNIFI_PASSWORD && process.env.UNIFI_PASSWORD.trim() !== '')
         };
         res.json(settings);
     } catch (error) {
@@ -308,6 +321,11 @@ app.post('/api/settings', (req, res) => {
         
         logger.info(`Attempting to save settings to: ${envPath}`);
         logger.info(`Config directory: ${configDir}`);
+        logger.info('Settings received:', credentialManager.sanitizeForLogging(settings));
+        
+        // Encrypt sensitive credentials before storing
+        const encryptedSettings = credentialManager.encryptSettings(settings);
+        logger.info('Settings after encryption:', credentialManager.sanitizeForLogging(encryptedSettings));
         
         // Ensure config directory exists with proper permissions
         if (!fs.existsSync(configDir)) {
@@ -335,11 +353,11 @@ app.post('/api/settings', (req, res) => {
             envContent = '# UniFi Sentinel Configuration\n# Generated automatically from settings UI\n\n';
         }
 
-        // Update or add settings
-        Object.keys(settings).forEach(key => {
-            if (settings[key] !== undefined && settings[key] !== '') {
+        // Update or add settings (using encrypted versions)
+        Object.keys(encryptedSettings).forEach(key => {
+            if (encryptedSettings[key] !== undefined && encryptedSettings[key] !== '') {
                 const pattern = new RegExp(`^${key}=.*`, 'm');
-                const newLine = `${key}=${settings[key]}`;
+                const newLine = `${key}=${encryptedSettings[key]}`;
                 
                 if (pattern.test(envContent)) {
                     envContent = envContent.replace(pattern, newLine);
@@ -353,10 +371,11 @@ app.post('/api/settings', (req, res) => {
         logger.info('Writing .env file');
         fs.writeFileSync(envPath, envContent, { mode: 0o644 });
         
-        // Update process.env with new values
-        Object.keys(settings).forEach(key => {
-            if (settings[key] !== undefined && settings[key] !== '') {
-                process.env[key] = settings[key];
+        // Update process.env with decrypted values (for runtime use)
+        const decryptedSettings = credentialManager.decryptSettings(encryptedSettings);
+        Object.keys(decryptedSettings).forEach(key => {
+            if (decryptedSettings[key] !== undefined && decryptedSettings[key] !== '') {
+                process.env[key] = decryptedSettings[key];
             }
         });
         
@@ -396,6 +415,10 @@ app.post('/api/test-settings', async (req, res) => {
     try {
         const settings = req.body;
         logger.info('Testing settings configuration');
+        logger.info('Test settings received:', credentialManager.sanitizeForLogging(settings));
+        
+        // Decrypt settings if they contain encrypted values
+        const decryptedSettings = credentialManager.decryptSettings(settings);
         
         // Temporarily set environment variables for testing
         const originalEnv = {
@@ -406,12 +429,12 @@ app.post('/api/test-settings', async (req, res) => {
             UNIFI_SITE: process.env.UNIFI_SITE
         };
         
-        // Set test environment variables
-        process.env.UNIFI_HOST = settings.UNIFI_HOST;
-        process.env.UNIFI_PORT = settings.UNIFI_PORT;
-        process.env.UNIFI_USERNAME = settings.UNIFI_USERNAME;
-        process.env.UNIFI_PASSWORD = settings.UNIFI_PASSWORD;
-        process.env.UNIFI_SITE = settings.UNIFI_SITE || 'default';
+        // Set test environment variables (using decrypted values)
+        process.env.UNIFI_HOST = decryptedSettings.UNIFI_HOST;
+        process.env.UNIFI_PORT = decryptedSettings.UNIFI_PORT;
+        process.env.UNIFI_USERNAME = decryptedSettings.UNIFI_USERNAME;
+        process.env.UNIFI_PASSWORD = decryptedSettings.UNIFI_PASSWORD;
+        process.env.UNIFI_SITE = decryptedSettings.UNIFI_SITE || 'default';
         
         try {
             // Create temporary UniFi controller with test settings
