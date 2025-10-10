@@ -7,7 +7,7 @@ echo "🔍 UniFi Permission Diagnostic Tool (Docker Version)"
 echo "===================================================="
 
 # Detect the API URL based on environment
-API_URL="http://localhost:3000"
+API_URL="http://192.168.0.74:8003"
 
 # Check if we can access the API
 echo "🔌 Testing API connectivity..."

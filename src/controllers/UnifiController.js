@@ -450,15 +450,48 @@ class UnifiController {
         try {
             console.log(`Attempting to block device: ${mac}`);
             
-            // Use makeAuthenticatedRequest which handles auth and retries
-            const result = await this.makeAuthenticatedRequest(
-                `/api/s/${this.site}/cmd/stamgr`,
-                'POST',
-                {
-                    cmd: 'block-sta',
-                    mac: mac.toLowerCase()
+            // Try multiple API endpoints for UniFi 9.4.19 compatibility
+            const endpoints = [
+                // Original endpoint
+                { path: `/api/s/${this.site}/cmd/stamgr`, cmd: 'block-sta' },
+                // Alternative Dream Machine endpoints
+                { path: `/api/s/${this.site}/cmd/sta-mgr`, cmd: 'block-sta' },
+                { path: `/api/s/${this.site}/cmd/stamgr`, cmd: 'block_sta' },
+                // Modern endpoint variations
+                { path: `/api/s/${this.site}/rest/user`, cmd: 'block-sta' },
+                { path: `/proxy/network/api/s/${this.site}/cmd/stamgr`, cmd: 'block-sta' }
+            ];
+
+            let lastError = null;
+            
+            for (const endpoint of endpoints) {
+                try {
+                    console.log(`Trying endpoint: ${endpoint.path} with cmd: ${endpoint.cmd}`);
+                    
+                    const result = await this.makeAuthenticatedRequest(
+                        endpoint.path,
+                        'POST',
+                        {
+                            cmd: endpoint.cmd,
+                            mac: mac.toLowerCase()
+                        }
+                    );
+                    
+                    console.log(`Block device response from ${endpoint.path}:`, result);
+                    
+                    if (result.meta && result.meta.rc === 'ok') {
+                        console.log(`Device ${mac} blocked successfully using ${endpoint.path}`);
+                        return true;
+                    }
+                } catch (error) {
+                    console.log(`Endpoint ${endpoint.path} failed: ${error.message}`);
+                    lastError = error;
+                    continue;
                 }
-            );
+            }
+            
+            // If all endpoints failed, throw the last error
+            throw lastError || new Error('All blocking endpoints failed');
 
             console.log(`Block device response:`, result);
             
@@ -513,15 +546,48 @@ class UnifiController {
         try {
             console.log(`Attempting to unblock device: ${mac}`);
             
-            // Use makeAuthenticatedRequest which handles auth and retries
-            const result = await this.makeAuthenticatedRequest(
-                `/api/s/${this.site}/cmd/stamgr`,
-                'POST',
-                {
-                    cmd: 'unblock-sta',
-                    mac: mac.toLowerCase()
+            // Try multiple API endpoints for UniFi 9.4.19 compatibility
+            const endpoints = [
+                // Original endpoint
+                { path: `/api/s/${this.site}/cmd/stamgr`, cmd: 'unblock-sta' },
+                // Alternative Dream Machine endpoints
+                { path: `/api/s/${this.site}/cmd/sta-mgr`, cmd: 'unblock-sta' },
+                { path: `/api/s/${this.site}/cmd/stamgr`, cmd: 'unblock_sta' },
+                // Modern endpoint variations
+                { path: `/api/s/${this.site}/rest/user`, cmd: 'unblock-sta' },
+                { path: `/proxy/network/api/s/${this.site}/cmd/stamgr`, cmd: 'unblock-sta' }
+            ];
+
+            let lastError = null;
+            
+            for (const endpoint of endpoints) {
+                try {
+                    console.log(`Trying endpoint: ${endpoint.path} with cmd: ${endpoint.cmd}`);
+                    
+                    const result = await this.makeAuthenticatedRequest(
+                        endpoint.path,
+                        'POST',
+                        {
+                            cmd: endpoint.cmd,
+                            mac: mac.toLowerCase()
+                        }
+                    );
+                    
+                    console.log(`Unblock device response from ${endpoint.path}:`, result);
+                    
+                    if (result.meta && result.meta.rc === 'ok') {
+                        console.log(`Device ${mac} unblocked successfully using ${endpoint.path}`);
+                        return true;
+                    }
+                } catch (error) {
+                    console.log(`Endpoint ${endpoint.path} failed: ${error.message}`);
+                    lastError = error;
+                    continue;
                 }
-            );
+            }
+            
+            // If all endpoints failed, throw the last error
+            throw lastError || new Error('All unblocking endpoints failed');
 
             console.log(`Unblock device response:`, result);
             
