@@ -1277,21 +1277,7 @@ footer p {
     color: var(--accent-success);
 }
 
-/* Time display indicators */
-.time-remaining {
-    color: var(--accent-success);
-    font-weight: 500;
-}
-
-.time-expired {
-    color: var(--accent-danger);
-    font-weight: 600;
-}
-
-.time-unlimited {
-    color: var(--text-secondary);
-    font-style: italic;
-}
+/* Removed time limit styling - feature removed as not realistic to enforce */
 
 /* Device info styling */
 .device-details {

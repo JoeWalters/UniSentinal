@@ -1189,20 +1189,7 @@ class UniFiSentinel {
                 '<i class="fas fa-circle online-indicator online" title="Online"></i>' : 
                 '<i class="fas fa-circle online-indicator offline" title="Offline"></i>';
             
-            // Time remaining display
-            let timeDisplay = '';
-            if (device.daily_time_limit && device.daily_time_limit > 0) {
-                if (device.time_remaining !== null && device.time_remaining !== undefined) {
-                    const remaining = device.time_remaining;
-                    if (remaining <= 0) {
-                        timeDisplay = '<span class="time-expired">Time Expired</span>';
-                    } else {
-                        timeDisplay = `<span class="time-remaining">${remaining} min left</span>`;
-                    }
-                } else {
-                    timeDisplay = `<span class="time-unlimited">Unlimited</span>`;
-                }
-            }
+            // Removed time limit functionality - not realistic to enforce
 
             return `
                 <div class="managed-device-card ${cardClass}" data-mac="${device.mac}">
@@ -1231,12 +1218,6 @@ class UniFiSentinel {
                             <div class="device-info">
                                 <span class="label">Vendor:</span>
                                 <span class="value">${device.vendor}</span>
-                            </div>
-                        ` : ''}
-                        ${timeDisplay ? `
-                            <div class="device-info">
-                                <span class="label">Time:</span>
-                                <span class="value">${timeDisplay}</span>
                             </div>
                         ` : ''}
                     </div>

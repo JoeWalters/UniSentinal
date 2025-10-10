@@ -479,7 +479,7 @@ class UnifiController {
                 const responseData = error.response.data;
                 
                 if (status === 403) {
-                    throw new Error('Access denied. Check UniFi user permissions for device management.');
+                    throw new Error('Access denied. The UniFi user account needs "Full Management" permissions. Go to UniFi Settings > Admins, find your user account, and ensure it has "Full Management" role or at least "Device Management" permissions to block devices.');
                 } else if (status === 401) {
                     throw new Error('Authentication failed. Please check UniFi credentials.');
                 } else if (status === 404) {
@@ -531,7 +531,7 @@ class UnifiController {
                 const responseData = error.response.data;
                 
                 if (status === 403) {
-                    throw new Error('Access denied. Check UniFi user permissions for device management.');
+                    throw new Error('Access denied. The UniFi user account needs "Full Management" permissions. Go to UniFi Settings > Admins, find your user account, and ensure it has "Full Management" role or at least "Device Management" permissions to unblock devices.');
                 } else if (status === 401) {
                     throw new Error('Authentication failed. Please check UniFi credentials.');
                 } else if (status === 404) {
@@ -577,6 +577,46 @@ class UnifiController {
         } catch (error) {
             console.error('Error getting blocked devices:', error.message);
             throw error;
+        }
+    }
+
+    // Check user permissions for device management
+    async checkUserPermissions() {
+        if (!this.isConfigured()) {
+            throw new Error('UniFi controller not configured');
+        }
+
+        try {
+            await this.login();
+            
+            // Get current admin/user info
+            const response = await this.axiosInstance.get(
+                `${this.baseUrl}/api/s/${this.site}/self`,
+                {
+                    headers: {
+                        'Cookie': this.cookies
+                    }
+                }
+            );
+
+            if (response.data?.meta?.rc === 'ok' && response.data.data?.length > 0) {
+                const userInfo = response.data.data[0];
+                return {
+                    success: true,
+                    username: userInfo.name,
+                    email: userInfo.email,
+                    role: userInfo.role,
+                    is_super: userInfo.is_super || false,
+                    permissions: userInfo.permissions || [],
+                    canManageDevices: userInfo.is_super || userInfo.role === 'admin' || (userInfo.permissions && userInfo.permissions.includes('device.block')),
+                    message: userInfo.is_super ? 'Super admin - full access' : `Role: ${userInfo.role}`
+                };
+            }
+
+            return { success: false, canManageDevices: false, error: 'Could not retrieve user information' };
+        } catch (error) {
+            console.error('Error checking user permissions:', error.message);
+            return { success: false, canManageDevices: false, error: error.message };
         }
     }
 }

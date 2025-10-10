@@ -177,7 +177,6 @@ class ParentalControlsManager {
                     currentIp: device.ip, // Use stored IP since getAllKnownDevices only returns MAC addresses
                     lastSeen: isOnline ? new Date().toISOString() : null,
                     schedule: scheduleData,
-                    timeRemaining: this.calculateTimeRemaining(device),
                     shouldBeBlocked: this.shouldDeviceBeBlocked({ ...device, is_blocked: isActuallyBlocked }, scheduleData)
                 };
             });
@@ -187,17 +186,7 @@ class ParentalControlsManager {
         }
     }
 
-    // Calculate remaining time for device today
-    calculateTimeRemaining(device) {
-        if (device.daily_time_limit === 0) return null; // No limit
-        
-        const totalAvailable = device.daily_time_limit + device.bonus_time;
-        const remaining = totalAvailable - device.time_used_today;
-        
-        return Math.max(0, remaining);
-    }
-
-    // Check if device should be blocked based on schedule and time limits
+    // Check if device should be blocked based on schedule (removed time limits - not realistic)
     shouldDeviceBeBlocked(device, scheduleData) {
         const now = new Date();
         
@@ -205,12 +194,6 @@ class ParentalControlsManager {
         if (device.blocked_until) {
             const blockedUntil = new Date(device.blocked_until);
             if (now < blockedUntil) return true;
-        }
-        
-        // Check time limits
-        if (device.daily_time_limit > 0) {
-            const timeRemaining = this.calculateTimeRemaining(device);
-            if (timeRemaining <= 0) return true;
         }
         
         // Check schedule

@@ -183,6 +183,17 @@ app.get('/api/diagnostics', async (req, res) => {
     }
 });
 
+app.get('/api/permissions', async (req, res) => {
+    try {
+        logger.info('Checking UniFi user permissions');
+        const permissions = await unifiController.checkUserPermissions();
+        res.json(permissions);
+    } catch (error) {
+        logger.error('Error checking permissions:', error.message);
+        res.status(500).json({ error: 'Failed to check permissions', details: error.message });
+    }
+});
+
 // Parental Controls API endpoints
 app.get('/api/parental/devices/available', async (req, res) => {
     try {
@@ -252,16 +263,7 @@ app.post('/api/parental/devices/:mac/unblock', async (req, res) => {
     }
 });
 
-app.post('/api/parental/devices/:mac/time-limit', async (req, res) => {
-    try {
-        const { dailyTimeLimit, bonusTime } = req.body;
-        const result = await parentalControls.setTimeLimit(req.params.mac, dailyTimeLimit, bonusTime);
-        res.json(result);
-    } catch (error) {
-        logger.error('Error setting time limit:', error.message);
-        res.status(500).json({ error: 'Failed to set time limit' });
-    }
-});
+// Removed time limit endpoint - not realistic to enforce connection time vs actual usage
 
 app.post('/api/parental/devices/:mac/schedule', async (req, res) => {
     try {
