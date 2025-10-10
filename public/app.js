@@ -1295,11 +1295,11 @@ class UniFiSentinel {
     updateParentalStats(devices) {
         const blockedCount = devices.filter(d => d.is_blocked).length;
         const scheduledCount = devices.filter(d => d.schedule_data && d.schedule_data !== '{}').length;
-        const timeLimitedCount = devices.filter(d => d.daily_time_limit && d.daily_time_limit > 0).length;
         
         document.getElementById('blockedDevicesCount').textContent = blockedCount;
         document.getElementById('scheduledDevicesCount').textContent = scheduledCount;
-        document.getElementById('timeLimitedDevicesCount').textContent = timeLimitedCount;
+        // Time limits removed - not realistic to enforce
+        document.getElementById('timeLimitedDevicesCount').textContent = '0';
     }
 
     // Toggle device block status
@@ -1696,9 +1696,6 @@ class UniFiSentinel {
         // Populate schedule tab
         this.populateScheduleTab(device);
         
-        // Populate time limits tab
-        this.populateTimeLimitsTab(device);
-        
         // Load activity logs
         this.populateActivityTab(device);
 
@@ -1801,7 +1798,7 @@ class UniFiSentinel {
         }
 
         try {
-            const response = await fetch(`/api/parental/devices/${mac}/time-limit`, {
+            const response = await fetch(`/api/parental/devices/${mac}/bonus-time`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -1951,51 +1948,7 @@ class UniFiSentinel {
         }
     }
 
-    // Populate time limits tab
-    populateTimeLimitsTab(device) {
-        const dailyTimeLimitInput = document.getElementById('dailyTimeLimit');
-        const timeUsedTodaySpan = document.getElementById('timeUsedToday');
-        const timeRemainingSpan = document.getElementById('timeRemaining');
-        const saveTimeLimitBtn = document.getElementById('saveTimeLimitBtn');
-
-        // Set current values
-        dailyTimeLimitInput.value = device.daily_time_limit || 0;
-        timeUsedTodaySpan.textContent = device.time_used_today || 0;
-        
-        if (device.time_remaining !== null && device.time_remaining !== undefined) {
-            timeRemainingSpan.textContent = device.time_remaining === null ? 'Unlimited' : `${device.time_remaining} minutes`;
-        } else {
-            timeRemainingSpan.textContent = device.daily_time_limit ? `${device.daily_time_limit} minutes` : 'Unlimited';
-        }
-
-        // Add save event listener
-        saveTimeLimitBtn.onclick = () => this.saveTimeLimit(device.mac);
-    }
-
-    // Save time limit
-    async saveTimeLimit(mac) {
-        const dailyTimeLimit = document.getElementById('dailyTimeLimit').value;
-        
-        try {
-            const response = await fetch(`/api/parental/devices/${mac}/time-limit`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    dailyTimeLimit: parseInt(dailyTimeLimit) || 0
-                })
-            });
-
-            if (!response.ok) throw new Error('Failed to save time limit');
-
-            this.showNotification('Time limit saved successfully', 'success');
-            await this.refreshDeviceManagementModal();
-        } catch (error) {
-            console.error('Error saving time limit:', error);
-            this.showError('Failed to save time limit');
-        }
-    }
+    // Time limit functionality removed - not realistic to enforce
 
     // Populate activity tab
     async populateActivityTab(device) {
@@ -2042,7 +1995,6 @@ class UniFiSentinel {
         const actionMap = {
             'blocked': 'Device Blocked',
             'unblocked': 'Device Unblocked',
-            'time_limit_reached': 'Time Limit Reached',
             'schedule_blocked': 'Blocked by Schedule',
             'schedule_unblocked': 'Unblocked by Schedule',
             'bonus_time_added': 'Bonus Time Added',
