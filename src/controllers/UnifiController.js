@@ -18,15 +18,13 @@ class UnifiController {
             
             try {
                 // Initialize the node-unifi controller
+                // Art of WiFi library expects just host and port, credentials are used in login
                 this.controller = new Controller({
                     host: this.host,
                     port: this.port,
-                    username: this.username,
-                    password: this.password,
-                    site: this.site,
-                    insecure: true // Accept self-signed certificates
+                    sslverify: false // Disable SSL verification for self-signed certs
                 });
-                console.log('✓ node-unifi Controller instantiated successfully');
+                console.log('✅ Art of WiFi node-unifi Controller initialized');
             } catch (error) {
                 console.error('❌ Failed to create node-unifi Controller:', error.message);
                 this.controller = null;
@@ -46,11 +44,12 @@ class UnifiController {
         }
 
         return new Promise((resolve, reject) => {
+            // Art of WiFi library login pattern
             this.controller.login(this.username, this.password, (error) => {
                 if (error) {
                     console.error('Failed to login to UniFi controller:', error);
                     this.isLoggedIn = false;
-                    reject(new Error('Authentication failed'));
+                    reject(new Error(`Authentication failed: ${error.message || error}`));
                 } else {
                     console.log('Successfully logged into UniFi controller');
                     this.isLoggedIn = true;
@@ -70,12 +69,13 @@ class UnifiController {
         await this.ensureLoggedIn();
         
         return new Promise((resolve, reject) => {
-            this.controller.getClientsOnline((error, data) => {
+            this.controller.getClientDevices(this.site, (error, data) => {
                 if (error) {
                     console.error('Error getting clients:', error);
-                    reject(error);
+                    reject(new Error(`Failed to get clients: ${error.message || error}`));
                 } else {
-                    resolve(data[0] || []);
+                    const clients = Array.isArray(data) ? data : (data && data.data ? data.data : []);
+                    resolve(clients);
                 }
             });
         });
@@ -85,12 +85,20 @@ class UnifiController {
         await this.ensureLoggedIn();
         
         return new Promise((resolve, reject) => {
-            this.controller.getActiveClients((error, data) => {
+            this.controller.getClientDevices(this.site, (error, data) => {
                 if (error) {
                     console.error('Error getting active clients:', error);
-                    reject(error);
+                    reject(new Error(`Failed to get active clients: ${error.message || error}`));
                 } else {
-                    resolve(data[0] || []);
+                    const clients = Array.isArray(data) ? data : (data && data.data ? data.data : []);
+                    // Filter for active clients (connected in last 24 hours)
+                    const activeClients = clients.filter(client => {
+                        const lastSeen = client.last_seen ? new Date(client.last_seen * 1000) : null;
+                        const now = new Date();
+                        const dayAgo = new Date(now.getTime() - (24 * 60 * 60 * 1000));
+                        return lastSeen && lastSeen > dayAgo;
+                    });
+                    resolve(activeClients);
                 }
             });
         });
@@ -100,12 +108,15 @@ class UnifiController {
         await this.ensureLoggedIn();
         
         return new Promise((resolve, reject) => {
-            this.controller.getAllClients((error, data) => {
+            // Use the correct Art of WiFi method with site parameter
+            this.controller.getAllClients(this.site, (error, data) => {
                 if (error) {
                     console.error('Error getting all clients:', error);
-                    reject(error);
+                    reject(new Error(`Failed to get clients: ${error.message || error}`));
                 } else {
-                    resolve(data[0] || []);
+                    // Art of WiFi returns data in different format
+                    const clients = Array.isArray(data) ? data : (data && data.data ? data.data : []);
+                    resolve(clients);
                 }
             });
         });
@@ -122,7 +133,7 @@ class UnifiController {
             console.log(`Attempting to block device: ${mac}`);
             
             return new Promise((resolve, reject) => {
-                this.controller.blockClient(mac.toLowerCase(), (error, data) => {
+                this.controller.blockClient(this.site, mac.toLowerCase(), (error, data) => {
                     if (error) {
                         console.error('Error blocking device:', error);
                         if (error.message && error.message.includes('403')) {
@@ -157,7 +168,7 @@ class UnifiController {
             console.log(`Attempting to unblock device: ${mac}`);
             
             return new Promise((resolve, reject) => {
-                this.controller.unblockClient(mac.toLowerCase(), (error, data) => {
+                this.controller.unblockClient(this.site, mac.toLowerCase(), (error, data) => {
                     if (error) {
                         console.error('Error unblocking device:', error);
                         if (error.message && error.message.includes('403')) {
@@ -207,17 +218,24 @@ class UnifiController {
             };
 
             // Test data access
-            const clients = await this.getAllClients();
-            diagnostics.dataAccess = {
-                status: 'success',
-                message: 'Successfully retrieved client data',
-                clientCount: clients.length,
-                sampleData: clients.slice(0, 2).map(client => ({
-                    mac: client.mac,
-                    hostname: client.hostname || 'Unknown',
-                    ip: client.ip || 'N/A'
-                }))
-            };
+            try {
+                const clients = await this.getAllClients();
+                diagnostics.dataAccess = {
+                    status: 'success',
+                    message: 'Successfully retrieved client data',
+                    clientCount: clients.length,
+                    library: 'Art of WiFi node-unifi',
+                    sampleData: clients.slice(0, 2).map(client => ({
+                        mac: client.mac,
+                        hostname: client.hostname || client.name || 'Unknown',
+                        ip: client.ip || 'N/A',
+                        lastSeen: client.last_seen ? new Date(client.last_seen * 1000).toLocaleString() : 'N/A'
+                    }))
+                };
+            } catch (dataError) {
+                // Separate data access errors from authentication errors
+                throw new Error(`Failed to get clients: ${dataError.message || dataError}`);
+            }
 
             // Get controller info if available
             diagnostics.controllerHealth = {
@@ -238,22 +256,71 @@ class UnifiController {
         } catch (error) {
             console.error('Diagnostics failed:', error);
             
-            if (error.message.includes('Authentication failed')) {
+            // More detailed error handling for Art of WiFi library
+            if (error.message && error.message.includes('Authentication failed')) {
                 diagnostics.authentication = {
                     status: 'error',
-                    message: 'Authentication failed',
-                    error: error.message
+                    message: 'Authentication failed - check username/password',
+                    error: error.message,
+                    troubleshooting: 'Verify UNIFI_USERNAME and UNIFI_PASSWORD environment variables'
+                };
+            } else if (error.message && (error.message.includes('ECONNREFUSED') || error.message.includes('ENOTFOUND'))) {
+                diagnostics.apiConnection = {
+                    status: 'error',
+                    message: 'Cannot connect to UniFi controller',
+                    error: error.message,
+                    troubleshooting: `Verify UNIFI_HOST (${this.host}) and UNIFI_PORT (${this.port}) are correct and controller is accessible`
+                };
+            } else if (error.message && error.message.includes('Failed to get clients')) {
+                diagnostics.dataAccess = {
+                    status: 'error',
+                    message: 'Authentication successful but data access failed',
+                    error: error.message,
+                    troubleshooting: 'Check if user has sufficient permissions and site parameter is correct'
                 };
             } else {
                 diagnostics.apiConnection = {
                     status: 'error',
                     message: 'API connection failed',
-                    error: error.message
+                    error: error.message,
+                    troubleshooting: 'Check network connectivity and controller status'
                 };
             }
         }
 
         return diagnostics;
+    }
+
+    // Test basic connection without data access
+    async testConnection() {
+        if (!this.isConfigured()) {
+            throw new Error('UniFi controller not configured');
+        }
+
+        try {
+            await this.login();
+            return {
+                success: true,
+                message: 'Successfully connected and authenticated',
+                details: {
+                    host: this.host,
+                    port: this.port,
+                    site: this.site,
+                    username: this.username
+                }
+            };
+        } catch (error) {
+            return {
+                success: false,
+                error: error.message,
+                details: {
+                    host: this.host,
+                    port: this.port,
+                    site: this.site,
+                    username: this.username
+                }
+            };
+        }
     }
 
     // Check user permissions - simplified for Art of WiFi client

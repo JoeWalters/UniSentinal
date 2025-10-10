@@ -172,6 +172,17 @@ app.get('/api/version', (req, res) => {
     }
 });
 
+app.get('/api/test-connection', async (req, res) => {
+    try {
+        logger.info('Testing UniFi connection');
+        const result = await unifiController.testConnection();
+        res.json(result);
+    } catch (error) {
+        logger.error('Error testing connection:', error.message);
+        res.status(500).json({ error: 'Failed to test connection', details: error.message });
+    }
+});
+
 app.get('/api/diagnostics', async (req, res) => {
     try {
         logger.info('Running diagnostics check');

@@ -519,6 +519,47 @@ docker run --network host ...  # Use host networking for testing
 - ✅ Certificate validation is disabled for UniFi controllers
 - ⚠️ Ensure port 443 (HTTPS) is used, not port 80
 
+### **Art of WiFi Library Issues**
+
+#### **Diagnostics Failing After Migration**
+```bash
+# Test the Art of WiFi integration directly:
+node test-unifi.js
+
+# Common issues and solutions:
+✅ Site parameter must be correct (default: 'default')
+✅ Controller callback patterns changed from axios
+✅ Data format may be different (array vs object with .data property)
+✅ Error handling changed - check error.message structure
+
+# Expected data format with Art of WiFi:
+# Option 1: Array returned directly
+data = [client1, client2, ...]
+
+# Option 2: Object with data property  
+data = { data: [client1, client2, ...], meta: {...} }
+```
+
+#### **Connection Test Endpoint**
+```bash
+# Use the new connection test endpoint:
+GET /api/test-connection
+
+# This tests login without data access
+# Helps isolate authentication vs data retrieval issues
+```
+
+#### **Callback Error Patterns**
+```javascript
+// Art of WiFi error patterns:
+error.message contains:
+- "Authentication failed" → Bad credentials
+- "ECONNREFUSED" → Controller unreachable
+- "ENOTFOUND" → DNS/hostname issue
+- "403" → Insufficient permissions
+- "Failed to get clients" → Data access issue
+```
+
 ### **Parental Control Issues**
 
 #### **Devices Not Blocking**
