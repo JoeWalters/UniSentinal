@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CSS Test</title>
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        .test-inline { color: red; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>CSS Test Page</h1>
+    <p class="test-inline">This should be red and bold (inline CSS)</p>
+    <p class="device-card">This should be styled by external CSS if it loads</p>
+    
+    <script>
+        console.log('JavaScript working');
+        
+        // Check if CSS loaded
+        const link = document.querySelector('link[rel="stylesheet"]');
+        if (link) {
+            link.onload = () => console.log('CSS loaded successfully');
+            link.onerror = () => console.error('CSS failed to load');
+        }
+        
+        // Test CSS availability
+        setTimeout(() => {
+            const testEl = document.querySelector('.device-card');
+            const styles = window.getComputedStyle(testEl);
+            console.log('CSS computed styles:', {
+                background: styles.background,
+                padding: styles.padding,
+                borderRadius: styles.borderRadius
+            });
+        }, 100);
+    </script>
+</body>
+</html>

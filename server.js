@@ -38,36 +38,53 @@ sensitiveFields.forEach(field => {
     }
 });
 
-// Middleware
+// Middleware - Helmet 6.x compatible CSP
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com"],
-            scriptSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'"],
             imgSrc: ["'self'", "data:", "https:"],
-            fontSrc: ["'self'", "https://cdnjs.cloudflare.com"]
+            fontSrc: ["'self'", "https://cdnjs.cloudflare.com"],
+            connectSrc: ["'self'"]
         }
     }
 }));
 app.use(cors());
 app.use(express.json());
-app.use(express.static('public'));
+
+// Debug: Log static file requests
+app.use('/styles.css', (req, res, next) => {
+    logger.info('CSS file requested');
+    console.log('CSS file path:', path.join(__dirname, 'public', 'styles.css'));
+    console.log('CSS file exists:', fs.existsSync(path.join(__dirname, 'public', 'styles.css')));
+    next();
+});
+
+// Serve static files with debugging and proper headers
+app.use(express.static('public', {
+    setHeaders: (res, filePath) => {
+        console.log('Serving static file:', filePath);
+        if (filePath.endsWith('.css')) {
+            res.setHeader('Content-Type', 'text/css');
+        }
+    }
+}));
 
 // Initialize database and UniFi controller
 const dbManager = new DatabaseManager();
 const unifiController = new UnifiController();
 const parentalControls = new ParentalControlsManager(unifiController, dbManager);
 
-// Debug: Log static file requests
-app.use('/styles.css', (req, res, next) => {
-    logger.info('CSS file requested');
-    next();
-});
-
 // Routes
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// CSS Test route for debugging
+app.get('/css-test', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'css-test.html'));
 });
 
 // API Routes
