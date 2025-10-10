@@ -76,6 +76,21 @@ class UnifiController {
         });
     }
 
+    async getActiveClients() {
+        await this.ensureLoggedIn();
+        
+        return new Promise((resolve, reject) => {
+            this.controller.getActiveClients((error, data) => {
+                if (error) {
+                    console.error('Error getting active clients:', error);
+                    reject(error);
+                } else {
+                    resolve(data[0] || []);
+                }
+            });
+        });
+    }
+
     async getAllClients() {
         await this.ensureLoggedIn();
         
@@ -105,8 +120,6 @@ class UnifiController {
                 this.controller.blockClient(mac.toLowerCase(), (error, data) => {
                     if (error) {
                         console.error('Error blocking device:', error);
-                        
-                        // Enhanced error handling for common issues
                         if (error.message && error.message.includes('403')) {
                             reject(new Error('Access denied. UniFi account may need Full Management permissions, or device blocking may be disabled in UniFi 9.4.19 firmware.'));
                         } else if (error.message && error.message.includes('401')) {
@@ -116,7 +129,7 @@ class UnifiController {
                             reject(new Error(`UniFi blocking failed: ${error.message || error}`));
                         }
                     } else {
-                        console.log(`Device ${mac} blocked successfully using Art of WiFi client`);
+                        console.log(`Device ${mac} blocked successfully using node-unifi client`);
                         console.log('Block response:', data);
                         resolve(true);
                     }
@@ -142,7 +155,6 @@ class UnifiController {
                 this.controller.unblockClient(mac.toLowerCase(), (error, data) => {
                     if (error) {
                         console.error('Error unblocking device:', error);
-                        
                         if (error.message && error.message.includes('403')) {
                             reject(new Error('Access denied. UniFi account may need Full Management permissions.'));
                         } else if (error.message && error.message.includes('401')) {
@@ -152,7 +164,7 @@ class UnifiController {
                             reject(new Error(`UniFi unblocking failed: ${error.message || error}`));
                         }
                     } else {
-                        console.log(`Device ${mac} unblocked successfully using Art of WiFi client`);
+                        console.log(`Device ${mac} unblocked successfully using node-unifi client`);
                         console.log('Unblock response:', data);
                         resolve(true);
                     }
