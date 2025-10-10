@@ -1,10 +1,9 @@
-const unifi = require('node-unifi');
+const { Controller } = require('node-unifi');
 
 class UnifiController {
     constructor() {
-        this.updateConfiguration();
-        this.controller = null;
         this.isLoggedIn = false;
+        this.updateConfiguration();
     }
 
     updateConfiguration() {
@@ -17,15 +16,21 @@ class UnifiController {
         if (this.host && this.port) {
             this.baseUrl = `https://${this.host}:${this.port}`;
             
-            // Initialize the node-unifi controller
-            this.controller = unifi({
-                host: this.host,
-                port: this.port,
-                username: this.username,
-                password: this.password,
-                site: this.site,
-                insecure: true // Accept self-signed certificates
-            });
+            try {
+                // Initialize the node-unifi controller
+                this.controller = new Controller({
+                    host: this.host,
+                    port: this.port,
+                    username: this.username,
+                    password: this.password,
+                    site: this.site,
+                    insecure: true // Accept self-signed certificates
+                });
+                console.log('✓ node-unifi Controller instantiated successfully');
+            } catch (error) {
+                console.error('❌ Failed to create node-unifi Controller:', error.message);
+                this.controller = null;
+            }
         } else {
             this.controller = null;
         }
@@ -41,7 +46,7 @@ class UnifiController {
         }
 
         return new Promise((resolve, reject) => {
-            this.controller.login((error) => {
+            this.controller.login(this.username, this.password, (error) => {
                 if (error) {
                     console.error('Failed to login to UniFi controller:', error);
                     this.isLoggedIn = false;
