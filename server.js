@@ -266,6 +266,16 @@ app.get('/api/parental/logs/:mac?', async (req, res) => {
     }
 });
 
+app.get('/api/parental/devices/:mac/logs', async (req, res) => {
+    try {
+        const logs = await dbManager.getParentalLogs(req.params.mac, parseInt(req.query.limit) || 50);
+        res.json(logs);
+    } catch (error) {
+        logger.error('Error getting device parental logs:', error.message);
+        res.status(500).json({ error: 'Failed to get device parental logs' });
+    }
+});
+
 // Settings management endpoints
 app.get('/api/settings', (req, res) => {
     try {

@@ -57,6 +57,35 @@ class UniFiSentinel {
         document.getElementById('testSettingsBtn').addEventListener('click', () => this.testSettings());
         document.getElementById('refreshLogsBtn').addEventListener('click', () => this.loadLogs());
 
+        // Add device modal events
+        const closeAddDeviceModal = document.getElementById('closeAddDeviceModal');
+        const addDeviceCloseBtn = document.getElementById('addDeviceCloseBtn');
+        
+        if (closeAddDeviceModal) {
+            closeAddDeviceModal.addEventListener('click', () => this.closeAddDeviceModal());
+        }
+        
+        if (addDeviceCloseBtn) {
+            addDeviceCloseBtn.addEventListener('click', () => this.closeAddDeviceModal());
+        }
+
+        // Device management modal events
+        const closeManagementModal = document.getElementById('closeManagementModal');
+        const managementCloseBtn = document.getElementById('managementCloseBtn');
+        const removeDeviceBtn = document.getElementById('removeDeviceBtn');
+        
+        if (closeManagementModal) {
+            closeManagementModal.addEventListener('click', () => this.closeDeviceManagementModal());
+        }
+        
+        if (managementCloseBtn) {
+            managementCloseBtn.addEventListener('click', () => this.closeDeviceManagementModal());
+        }
+        
+        if (removeDeviceBtn) {
+            removeDeviceBtn.addEventListener('click', () => this.removeDeviceFromParentalControls());
+        }
+
         // Close modal on background click
         document.getElementById('deviceModal').addEventListener('click', (e) => {
             if (e.target.id === 'deviceModal') {
@@ -64,10 +93,32 @@ class UniFiSentinel {
             }
         });
 
-        // Escape key to close modal
+        // Close add device modal on background click
+        const addDeviceModal = document.getElementById('addDeviceModal');
+        if (addDeviceModal) {
+            addDeviceModal.addEventListener('click', (e) => {
+                if (e.target.id === 'addDeviceModal') {
+                    this.closeAddDeviceModal();
+                }
+            });
+        }
+
+        // Close device management modal on background click
+        const deviceManagementModal = document.getElementById('deviceManagementModal');
+        if (deviceManagementModal) {
+            deviceManagementModal.addEventListener('click', (e) => {
+                if (e.target.id === 'deviceManagementModal') {
+                    this.closeDeviceManagementModal();
+                }
+            });
+        }
+
+        // Escape key to close modals
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 this.closeModal();
+                this.closeAddDeviceModal();
+                this.closeDeviceManagementModal();
             }
         });
     }
@@ -1107,17 +1158,532 @@ class UniFiSentinel {
             if (!response.ok) throw new Error('Failed to fetch available devices');
             
             const devices = await response.json();
-            // TODO: Implement add device modal functionality
-            this.showNotification('Add Device feature coming soon!', 'info');
+            this.renderAvailableDevices(devices);
+            document.getElementById('addDeviceModal').style.display = 'flex';
         } catch (error) {
             console.error('Error loading available devices:', error);
             this.showError('Failed to load available devices');
         }
     }
 
-    // Manage device (placeholder for future modal)
-    manageDevice(mac) {
-        this.showNotification('Device management modal coming soon!', 'info');
+    // Render available devices in the add device modal
+    renderAvailableDevices(devices) {
+        const devicesList = document.getElementById('availableDevicesList');
+        const searchInput = document.getElementById('deviceSearchInput');
+        
+        // Filter out devices that are already managed
+        const availableDevices = devices.filter(device => !device.isManaged);
+        
+        if (availableDevices.length === 0) {
+            devicesList.innerHTML = `
+                <div class="no-devices">
+                    <i class="fas fa-info-circle"></i>
+                    <p>No available devices to add</p>
+                    <small>All devices are already under parental control</small>
+                </div>
+            `;
+            return;
+        }
+
+        this.allAvailableDevices = availableDevices; // Store for search functionality
+        this.renderFilteredDevices(availableDevices);
+
+        // Add search functionality
+        searchInput.oninput = (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            const filtered = availableDevices.filter(device => 
+                (device.hostname || device.mac).toLowerCase().includes(searchTerm) ||
+                (device.vendor || '').toLowerCase().includes(searchTerm)
+            );
+            this.renderFilteredDevices(filtered);
+        };
+    }
+
+    // Render filtered devices
+    renderFilteredDevices(devices) {
+        const devicesList = document.getElementById('availableDevicesList');
+        
+        devicesList.innerHTML = devices.map(device => `
+            <div class="available-device-item" data-mac="${device.mac}">
+                <div class="device-info">
+                    <div class="device-name">${device.hostname || 'Unknown Device'}</div>
+                    <div class="device-details">
+                        <span class="mac">${device.mac}</span>
+                        <span class="ip">${device.ip || 'No IP'}</span>
+                        <span class="vendor">${device.vendor || 'Unknown Vendor'}</span>
+                    </div>
+                </div>
+                <button class="btn btn-primary btn-small" onclick="app.addDeviceToParentalControls('${device.mac}')">
+                    <i class="fas fa-plus"></i> Add
+                </button>
+            </div>
+        `).join('');
+    }
+
+    // Add device to parental controls
+    async addDeviceToParentalControls(mac) {
+        try {
+            const device = this.allAvailableDevices.find(d => d.mac === mac);
+            if (!device) throw new Error('Device not found');
+
+            const deviceData = {
+                mac: device.mac,
+                device_name: device.hostname || 'Unknown Device',
+                ip: device.ip,
+                vendor: device.vendor
+            };
+
+            const response = await fetch('/api/parental/devices/add', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(deviceData)
+            });
+
+            if (!response.ok) throw new Error('Failed to add device');
+
+            this.showNotification(`Device "${deviceData.device_name}" added to parental controls`, 'success');
+            this.closeAddDeviceModal();
+            await this.loadParentalControlsData(); // Refresh the parental controls data
+        } catch (error) {
+            console.error('Error adding device to parental controls:', error);
+            this.showError('Failed to add device to parental controls');
+        }
+    }
+
+    // Close add device modal
+    closeAddDeviceModal() {
+        document.getElementById('addDeviceModal').style.display = 'none';
+        document.getElementById('deviceSearchInput').value = '';
+    }
+
+    // Close device management modal
+    closeDeviceManagementModal() {
+        document.getElementById('deviceManagementModal').style.display = 'none';
+        this.currentManagedDevice = null;
+    }
+
+    // Show device management modal
+    async manageDevice(mac) {
+        try {
+            // Find the device in managed devices
+            const response = await fetch('/api/parental/devices/managed');
+            if (!response.ok) throw new Error('Failed to fetch managed devices');
+            
+            const managedDevices = await response.json();
+            const device = managedDevices.find(d => d.mac === mac);
+            
+            if (!device) throw new Error('Device not found');
+            
+            this.currentManagedDevice = device;
+            this.populateDeviceManagementModal(device);
+            document.getElementById('deviceManagementModal').style.display = 'flex';
+        } catch (error) {
+            console.error('Error loading device for management:', error);
+            this.showError('Failed to load device details');
+        }
+    }
+
+    // Populate device management modal with device data
+    populateDeviceManagementModal(device) {
+        // Update modal title
+        document.getElementById('managementModalTitle').innerHTML = 
+            `<i class="fas fa-cog"></i> Managing: ${device.device_name}`;
+
+        // Switch to controls tab by default
+        this.switchManagementTab('controls');
+
+        // Populate controls tab
+        this.populateControlsTab(device);
+        
+        // Populate schedule tab
+        this.populateScheduleTab(device);
+        
+        // Populate time limits tab
+        this.populateTimeLimitsTab(device);
+        
+        // Load activity logs
+        this.populateActivityTab(device);
+
+        // Set up management tab switching
+        document.querySelectorAll('.management-tab').forEach(tab => {
+            tab.onclick = (e) => {
+                const tabName = e.target.getAttribute('data-tab');
+                this.switchManagementTab(tabName);
+            };
+        });
+    }
+
+    // Switch management modal tabs
+    switchManagementTab(tabName) {
+        // Update tab buttons
+        document.querySelectorAll('.management-tab').forEach(tab => {
+            tab.classList.remove('active');
+        });
+        document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+        
+        // Update tab content
+        document.querySelectorAll('.management-tab-content').forEach(content => {
+            content.classList.remove('active');
+        });
+        document.getElementById(`${tabName}-tab`).classList.add('active');
+    }
+
+    // Populate controls tab
+    populateControlsTab(device) {
+        const blockBtn = document.getElementById('blockDeviceBtn');
+        const unblockBtn = document.getElementById('unblockDeviceBtn');
+        const tempBlockBtn = document.getElementById('tempBlockBtn');
+        const addBonusTimeBtn = document.getElementById('addBonusTimeBtn');
+
+        // Update button states
+        if (device.is_blocked) {
+            blockBtn.style.display = 'none';
+            unblockBtn.style.display = 'inline-flex';
+        } else {
+            blockBtn.style.display = 'inline-flex';
+            unblockBtn.style.display = 'none';
+        }
+
+        // Add event listeners
+        blockBtn.onclick = () => this.blockManagedDevice(device.mac);
+        unblockBtn.onclick = () => this.unblockManagedDevice(device.mac);
+        tempBlockBtn.onclick = () => this.tempBlockManagedDevice(device.mac);
+        addBonusTimeBtn.onclick = () => this.addBonusTimeToDevice(device.mac);
+    }
+
+    // Block managed device
+    async blockManagedDevice(mac) {
+        await this.toggleDeviceBlock(mac, false);
+        await this.refreshDeviceManagementModal();
+    }
+
+    // Unblock managed device
+    async unblockManagedDevice(mac) {
+        await this.toggleDeviceBlock(mac, true);
+        await this.refreshDeviceManagementModal();
+    }
+
+    // Temporary block device
+    async tempBlockManagedDevice(mac) {
+        const minutes = document.getElementById('tempBlockMinutes').value;
+        if (!minutes || minutes < 1) {
+            this.showNotification('Please enter a valid number of minutes', 'warning');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/parental/devices/${mac}/block`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    reason: 'temporary',
+                    duration: parseInt(minutes)
+                })
+            });
+
+            if (!response.ok) throw new Error('Failed to temporarily block device');
+
+            this.showNotification(`Device blocked for ${minutes} minutes`, 'success');
+            document.getElementById('tempBlockMinutes').value = '';
+            await this.refreshDeviceManagementModal();
+        } catch (error) {
+            console.error('Error temporarily blocking device:', error);
+            this.showError('Failed to temporarily block device');
+        }
+    }
+
+    // Add bonus time to device
+    async addBonusTimeToDevice(mac) {
+        const minutes = document.getElementById('bonusMinutes').value;
+        if (!minutes || minutes < 5) {
+            this.showNotification('Please enter at least 5 minutes of bonus time', 'warning');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/parental/devices/${mac}/time-limit`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    bonusTime: parseInt(minutes)
+                })
+            });
+
+            if (!response.ok) throw new Error('Failed to add bonus time');
+
+            this.showNotification(`Added ${minutes} minutes of bonus time`, 'success');
+            document.getElementById('bonusMinutes').value = '';
+            await this.refreshDeviceManagementModal();
+        } catch (error) {
+            console.error('Error adding bonus time:', error);
+            this.showError('Failed to add bonus time');
+        }
+    }
+
+    // Populate schedule tab
+    populateScheduleTab(device) {
+        const scheduleGrid = document.getElementById('scheduleGrid');
+        const saveScheduleBtn = document.getElementById('saveScheduleBtn');
+        
+        // Parse existing schedule data
+        let scheduleData = {};
+        try {
+            scheduleData = device.schedule_data ? JSON.parse(device.schedule_data) : {};
+        } catch (error) {
+            console.error('Error parsing schedule data:', error);
+            scheduleData = {};
+        }
+
+        // Create schedule grid for each day of the week
+        const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+        const dayLabels = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+        
+        scheduleGrid.innerHTML = days.map((day, index) => {
+            const daySchedule = scheduleData[day] || { blockedPeriods: [] };
+            
+            return `
+                <div class="schedule-day">
+                    <h4>${dayLabels[index]}</h4>
+                    <div class="time-periods" id="${day}-periods">
+                        ${daySchedule.blockedPeriods.map((period, periodIndex) => `
+                            <div class="time-period">
+                                <input type="time" value="${period.start}" data-day="${day}" data-period="${periodIndex}" data-type="start">
+                                <span>to</span>
+                                <input type="time" value="${period.end}" data-day="${day}" data-period="${periodIndex}" data-type="end">
+                                <button class="btn-small btn-danger" onclick="app.removeTimePeriod('${day}', ${periodIndex})">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <button class="btn btn-small btn-secondary" onclick="app.addTimePeriod('${day}')">
+                        <i class="fas fa-plus"></i> Add Blocked Time
+                    </button>
+                </div>
+            `;
+        }).join('');
+
+        // Add save event listener
+        saveScheduleBtn.onclick = () => this.saveSchedule(device.mac);
+    }
+
+    // Add time period to a day
+    addTimePeriod(day) {
+        const periodsContainer = document.getElementById(`${day}-periods`);
+        const periodIndex = periodsContainer.children.length;
+        
+        const periodDiv = document.createElement('div');
+        periodDiv.className = 'time-period';
+        periodDiv.innerHTML = `
+            <input type="time" value="22:00" data-day="${day}" data-period="${periodIndex}" data-type="start">
+            <span>to</span>
+            <input type="time" value="08:00" data-day="${day}" data-period="${periodIndex}" data-type="end">
+            <button class="btn-small btn-danger" onclick="app.removeTimePeriod('${day}', ${periodIndex})">
+                <i class="fas fa-trash"></i>
+            </button>
+        `;
+        
+        periodsContainer.appendChild(periodDiv);
+    }
+
+    // Remove time period
+    removeTimePeriod(day, periodIndex) {
+        const periodsContainer = document.getElementById(`${day}-periods`);
+        const periodElements = periodsContainer.children;
+        
+        if (periodElements[periodIndex]) {
+            periodElements[periodIndex].remove();
+            
+            // Reindex remaining periods
+            Array.from(periodElements).forEach((element, index) => {
+                const inputs = element.querySelectorAll('input');
+                const button = element.querySelector('button');
+                
+                inputs.forEach(input => {
+                    input.setAttribute('data-period', index);
+                });
+                
+                button.setAttribute('onclick', `app.removeTimePeriod('${day}', ${index})`);
+            });
+        }
+    }
+
+    // Save schedule
+    async saveSchedule(mac) {
+        try {
+            const scheduleData = {};
+            const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+            
+            days.forEach(day => {
+                const periodsContainer = document.getElementById(`${day}-periods`);
+                const periods = Array.from(periodsContainer.children).map(periodElement => {
+                    const startInput = periodElement.querySelector('[data-type="start"]');
+                    const endInput = periodElement.querySelector('[data-type="end"]');
+                    
+                    return {
+                        start: startInput.value,
+                        end: endInput.value
+                    };
+                });
+                
+                scheduleData[day] = { blockedPeriods: periods };
+            });
+
+            const response = await fetch(`/api/parental/devices/${mac}/schedule`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ scheduleData })
+            });
+
+            if (!response.ok) throw new Error('Failed to save schedule');
+
+            this.showNotification('Schedule saved successfully', 'success');
+            await this.refreshDeviceManagementModal();
+        } catch (error) {
+            console.error('Error saving schedule:', error);
+            this.showError('Failed to save schedule');
+        }
+    }
+
+    // Populate time limits tab
+    populateTimeLimitsTab(device) {
+        const dailyTimeLimitInput = document.getElementById('dailyTimeLimit');
+        const timeUsedTodaySpan = document.getElementById('timeUsedToday');
+        const timeRemainingSpan = document.getElementById('timeRemaining');
+        const saveTimeLimitBtn = document.getElementById('saveTimeLimitBtn');
+
+        // Set current values
+        dailyTimeLimitInput.value = device.daily_time_limit || 0;
+        timeUsedTodaySpan.textContent = device.time_used_today || 0;
+        
+        if (device.time_remaining !== null && device.time_remaining !== undefined) {
+            timeRemainingSpan.textContent = device.time_remaining === null ? 'Unlimited' : `${device.time_remaining} minutes`;
+        } else {
+            timeRemainingSpan.textContent = device.daily_time_limit ? `${device.daily_time_limit} minutes` : 'Unlimited';
+        }
+
+        // Add save event listener
+        saveTimeLimitBtn.onclick = () => this.saveTimeLimit(device.mac);
+    }
+
+    // Save time limit
+    async saveTimeLimit(mac) {
+        const dailyTimeLimit = document.getElementById('dailyTimeLimit').value;
+        
+        try {
+            const response = await fetch(`/api/parental/devices/${mac}/time-limit`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    dailyTimeLimit: parseInt(dailyTimeLimit) || 0
+                })
+            });
+
+            if (!response.ok) throw new Error('Failed to save time limit');
+
+            this.showNotification('Time limit saved successfully', 'success');
+            await this.refreshDeviceManagementModal();
+        } catch (error) {
+            console.error('Error saving time limit:', error);
+            this.showError('Failed to save time limit');
+        }
+    }
+
+    // Populate activity tab
+    async populateActivityTab(device) {
+        try {
+            const response = await fetch(`/api/parental/devices/${device.mac}/logs`);
+            if (!response.ok) throw new Error('Failed to fetch activity logs');
+
+            const logs = await response.json();
+            const activityLogs = document.getElementById('deviceActivityLogs');
+
+            if (!logs || logs.length === 0) {
+                activityLogs.innerHTML = `
+                    <div class="no-devices">
+                        <i class="fas fa-history"></i>
+                        <p>No activity logs available</p>
+                        <small>Device activity will appear here</small>
+                    </div>
+                `;
+                return;
+            }
+
+            activityLogs.innerHTML = logs.map(log => `
+                <div class="activity-log-item">
+                    <div class="log-details">
+                        <div class="log-action">${this.formatLogAction(log.action)}</div>
+                        <div class="log-reason">${log.reason || 'No reason specified'}</div>
+                    </div>
+                    <div class="log-timestamp">${new Date(log.timestamp).toLocaleString()}</div>
+                </div>
+            `).join('');
+        } catch (error) {
+            console.error('Error loading activity logs:', error);
+            document.getElementById('deviceActivityLogs').innerHTML = `
+                <div class="no-devices">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p>Failed to load activity logs</p>
+                </div>
+            `;
+        }
+    }
+
+    // Format log action for display
+    formatLogAction(action) {
+        const actionMap = {
+            'blocked': 'Device Blocked',
+            'unblocked': 'Device Unblocked',
+            'time_limit_reached': 'Time Limit Reached',
+            'schedule_blocked': 'Blocked by Schedule',
+            'schedule_unblocked': 'Unblocked by Schedule',
+            'bonus_time_added': 'Bonus Time Added',
+            'temporary_block': 'Temporarily Blocked'
+        };
+        
+        return actionMap[action] || action;
+    }
+
+    // Remove device from parental controls
+    async removeDeviceFromParentalControls() {
+        if (!this.currentManagedDevice) return;
+
+        const deviceName = this.currentManagedDevice.device_name;
+        const confirmed = confirm(`Are you sure you want to remove "${deviceName}" from parental controls?\n\nThis will:\n- Remove all schedules and time limits\n- Unblock the device if currently blocked\n- Stop all parental control monitoring`);
+        
+        if (!confirmed) return;
+
+        try {
+            const response = await fetch(`/api/parental/devices/${this.currentManagedDevice.mac}`, {
+                method: 'DELETE'
+            });
+
+            if (!response.ok) throw new Error('Failed to remove device');
+
+            this.showNotification(`"${deviceName}" removed from parental controls`, 'success');
+            this.closeDeviceManagementModal();
+            await this.loadParentalControlsData();
+        } catch (error) {
+            console.error('Error removing device from parental controls:', error);
+            this.showError('Failed to remove device from parental controls');
+        }
+    }
+
+    // Refresh device management modal data
+    async refreshDeviceManagementModal() {
+        if (this.currentManagedDevice) {
+            await this.manageDevice(this.currentManagedDevice.mac);
+        }
     }
 
     // Diagnostics Accordion Toggle
