@@ -605,6 +605,70 @@ class UniFiSentinel {
         this.showNotification(message, 'error');
     }
 
+    // Toggle device block status
+    async toggleDeviceBlock(mac, isCurrentlyBlocked) {
+        try {
+            const action = isCurrentlyBlocked ? 'unblock' : 'block';
+            console.log(`Toggling device ${mac}: ${action}`);
+            
+            // Show loading state
+            const button = document.querySelector(`button[data-mac="${mac}"].toggle-block-btn`);
+            if (button) {
+                button.disabled = true;
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+            }
+            
+            const response = await fetch(`/api/parental/devices/${mac}/${action}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Failed to ${action} device: ${response.statusText}`);
+            }
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                this.showNotification(`Device ${isCurrentlyBlocked ? 'unblocked' : 'blocked'} successfully`, 'success');
+                // Refresh the managed devices list to show updated status
+                await this.loadParentalControlsData();
+            } else {
+                throw new Error(result.error || `Failed to ${action} device`);
+            }
+            
+        } catch (error) {
+            console.error('Error toggling device block:', error);
+            this.showError(`Error: ${error.message}`);
+            
+            // Re-enable button
+            const button = document.querySelector(`button[data-mac="${mac}"].toggle-block-btn`);
+            if (button) {
+                button.disabled = false;
+                const isBlocked = button.getAttribute('data-blocked') === 'true';
+                button.innerHTML = `<i class="fas ${isBlocked ? 'fa-check' : 'fa-ban'}"></i> ${isBlocked ? 'Unblock' : 'Block'}`;
+            }
+        }
+    }
+    
+    // Open device management modal
+    manageDevice(mac) {
+        console.log(`Opening management for device: ${mac}`);
+        
+        // Find the device data
+        const device = this.managedDevices?.find(d => d.mac === mac);
+        if (!device) {
+            this.showError('Device not found');
+            return;
+        }
+        
+        // TODO: Implement comprehensive device management modal
+        // For now, show a simple alert with device info
+        alert(`Device Management\n\nName: ${device.device_name}\nMAC: ${device.mac}\nStatus: ${device.is_blocked ? 'Blocked' : 'Allowed'}\n\n[Full management interface coming soon]`);
+    }
+
     startAutoRefresh() {
         this.autoRefreshInterval = setInterval(() => {
             this.loadDevices();
@@ -1105,42 +1169,121 @@ class UniFiSentinel {
         grid.style.display = 'grid';
         noDevices.style.display = 'none';
         
-        grid.innerHTML = devices.map(device => `
-            <div class="managed-device-card">
-                <div class="device-header">
-                    <div class="device-name">${device.device_name}</div>
-                    <div class="device-status ${device.is_blocked ? 'blocked' : 'allowed'}">
-                        ${device.is_blocked ? 'Blocked' : 'Allowed'}
-                    </div>
-                </div>
-                <div class="device-details">
-                    <div class="device-info">
-                        <span class="label">MAC:</span>
-                        <span class="value">${device.mac}</span>
-                    </div>
-                    <div class="device-info">
-                        <span class="label">IP:</span>
-                        <span class="value">${device.ip || 'N/A'}</span>
-                    </div>
-                    ${device.time_remaining !== undefined ? `
-                        <div class="device-info">
-                            <span class="label">Time Left:</span>
-                            <span class="value">${device.time_remaining === null ? 'Unlimited' : device.time_remaining + ' min'}</span>
+        grid.innerHTML = devices.map(device => {
+            // Determine visual status and colors
+            const isBlocked = device.is_blocked;
+            const isOnline = device.isOnline;
+            const statusClass = isBlocked ? 'blocked' : 'allowed';
+            const cardClass = isBlocked ? 'device-blocked' : 'device-allowed';
+            
+            // Status icon and text
+            const statusIcon = isBlocked ? 
+                '<i class="fas fa-ban status-icon blocked"></i>' : 
+                '<i class="fas fa-check status-icon allowed"></i>';
+            
+            const statusText = isBlocked ? 'Blocked' : 'Allowed';
+            
+            // Online indicator
+            const onlineIcon = isOnline ? 
+                '<i class="fas fa-circle online-indicator online" title="Online"></i>' : 
+                '<i class="fas fa-circle online-indicator offline" title="Offline"></i>';
+            
+            // Time remaining display
+            let timeDisplay = '';
+            if (device.daily_time_limit && device.daily_time_limit > 0) {
+                if (device.time_remaining !== null && device.time_remaining !== undefined) {
+                    const remaining = device.time_remaining;
+                    if (remaining <= 0) {
+                        timeDisplay = '<span class="time-expired">Time Expired</span>';
+                    } else {
+                        timeDisplay = `<span class="time-remaining">${remaining} min left</span>`;
+                    }
+                } else {
+                    timeDisplay = `<span class="time-unlimited">Unlimited</span>`;
+                }
+            }
+
+            return `
+                <div class="managed-device-card ${cardClass}" data-mac="${device.mac}">
+                    <div class="device-header">
+                        <div class="device-name-section">
+                            <div class="device-name">${device.device_name}</div>
+                            <div class="device-indicators">
+                                ${onlineIcon}
+                                ${statusIcon}
+                            </div>
                         </div>
-                    ` : ''}
+                        <div class="device-status ${statusClass}">
+                            ${statusText}
+                        </div>
+                    </div>
+                    <div class="device-details">
+                        <div class="device-info">
+                            <span class="label">MAC:</span>
+                            <span class="value">${device.mac.toUpperCase()}</span>
+                        </div>
+                        <div class="device-info">
+                            <span class="label">IP:</span>
+                            <span class="value">${device.currentIp || device.ip || 'N/A'}</span>
+                        </div>
+                        ${device.vendor ? `
+                            <div class="device-info">
+                                <span class="label">Vendor:</span>
+                                <span class="value">${device.vendor}</span>
+                            </div>
+                        ` : ''}
+                        ${timeDisplay ? `
+                            <div class="device-info">
+                                <span class="label">Time:</span>
+                                <span class="value">${timeDisplay}</span>
+                            </div>
+                        ` : ''}
+                    </div>
+                    <div class="device-actions">
+                        <button class="btn btn-small toggle-block-btn ${isBlocked ? 'btn-success' : 'btn-danger'}" 
+                                data-mac="${device.mac}" data-blocked="${isBlocked}">
+                            <i class="fas ${isBlocked ? 'fa-check' : 'fa-ban'}"></i>
+                            ${isBlocked ? 'Unblock' : 'Block'}
+                        </button>
+                        <button class="btn btn-small btn-secondary manage-device-btn" 
+                                data-mac="${device.mac}">
+                            <i class="fas fa-cog"></i> Manage
+                        </button>
+                    </div>
                 </div>
-                <div class="device-actions">
-                    <button class="btn btn-small ${device.is_blocked ? 'btn-success' : 'btn-danger'}" 
-                            onclick="app.toggleDeviceBlock('${device.mac}', ${device.is_blocked})">
-                        <i class="fas ${device.is_blocked ? 'fa-check' : 'fa-ban'}"></i>
-                        ${device.is_blocked ? 'Unblock' : 'Block'}
-                    </button>
-                    <button class="btn btn-small btn-secondary" onclick="app.manageDevice('${device.mac}')">
-                        <i class="fas fa-cog"></i> Manage
-                    </button>
-                </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
+
+        // Set up event listeners for the buttons
+        this.setupManagedDeviceEventListeners();
+    }
+
+    // Setup event listeners for managed device buttons
+    setupManagedDeviceEventListeners() {
+        const grid = document.getElementById('managedDevicesGrid');
+        
+        // Remove existing listeners
+        grid.removeEventListener('click', this.handleManagedDeviceClick);
+        
+        // Add new listener with event delegation
+        this.handleManagedDeviceClick = (e) => {
+            const button = e.target.closest('button');
+            if (!button) return;
+            
+            const mac = button.getAttribute('data-mac');
+            if (!mac) return;
+            
+            if (button.classList.contains('toggle-block-btn')) {
+                e.preventDefault();
+                const isCurrentlyBlocked = button.getAttribute('data-blocked') === 'true';
+                this.toggleDeviceBlock(mac, isCurrentlyBlocked);
+            } else if (button.classList.contains('manage-device-btn')) {
+                e.preventDefault();
+                this.manageDevice(mac);
+            }
+        };
+        
+        grid.addEventListener('click', this.handleManagedDeviceClick);
     }
 
     // Update parental control statistics

@@ -122,13 +122,29 @@ class ParentalControlsManager {
             const managedDevices = await this.db.getManagedDevices();
             console.log(`ParentalControlsManager: Found ${managedDevices.length} managed devices in database`);
             
-            // Try to get current device data from UniFi controller, but don't fail if it's not configured
-            let currentDevices = new Set(); // getAllKnownDevices returns a Set, not a Map
+            // Try to get current device data and blocked devices from UniFi controller
+            let currentDevices = new Set();
+            let blockedDevices = new Set();
+            
             try {
                 if (this.unifiController.isConfigured()) {
-                    console.log('ParentalControlsManager: UniFi controller is configured, fetching current devices...');
-                    currentDevices = await this.unifiController.getAllKnownDevices();
+                    console.log('ParentalControlsManager: UniFi controller is configured, fetching current devices and block status...');
+                    
+                    // Get both current devices and blocked devices from UniFi
+                    const [currentDevicesData, blockedDevicesData] = await Promise.all([
+                        this.unifiController.getAllKnownDevices(),
+                        this.unifiController.getBlockedDevices()
+                    ]);
+                    
+                    currentDevices = currentDevicesData;
                     console.log(`ParentalControlsManager: Got ${currentDevices.size} current devices from UniFi`);
+                    
+                    // Convert blocked devices array to Set of MAC addresses
+                    blockedDevices = new Set(blockedDevicesData.map(device => device.mac.toLowerCase()));
+                    console.log(`ParentalControlsManager: Got ${blockedDevices.size} blocked devices from UniFi`);
+                    
+                    // Update our internal blocked devices cache
+                    this.blockedDevices = new Set(blockedDevices);
                 } else {
                     console.log('ParentalControlsManager: UniFi controller not configured, using stored data only');
                 }
@@ -138,18 +154,31 @@ class ParentalControlsManager {
             }
             
             return managedDevices.map(device => {
+                const deviceMac = device.mac.toLowerCase();
+                
                 // Check if device MAC is in the current devices Set (device is online)
-                const isOnline = currentDevices.has(device.mac.toLowerCase());
+                const isOnline = currentDevices.has(deviceMac);
+                
+                // Check actual block status from UniFi controller
+                const isActuallyBlocked = blockedDevices.has(deviceMac);
+                
+                // Update database if there's a mismatch between UniFi and our database
+                if (isActuallyBlocked !== device.is_blocked) {
+                    console.log(`Status mismatch for ${device.device_name} (${deviceMac}): DB=${device.is_blocked}, UniFi=${isActuallyBlocked}. Updating database...`);
+                    this.db.updateDeviceBlockStatus(deviceMac, isActuallyBlocked, 'sync_with_unifi');
+                }
+                
                 const scheduleData = device.schedule_data ? JSON.parse(device.schedule_data) : null;
                 
                 return {
                     ...device,
+                    is_blocked: isActuallyBlocked, // Use actual UniFi status
                     isOnline: isOnline,
                     currentIp: device.ip, // Use stored IP since getAllKnownDevices only returns MAC addresses
                     lastSeen: isOnline ? new Date().toISOString() : null,
                     schedule: scheduleData,
                     timeRemaining: this.calculateTimeRemaining(device),
-                    shouldBeBlocked: this.shouldDeviceBeBlocked(device, scheduleData)
+                    shouldBeBlocked: this.shouldDeviceBeBlocked({ ...device, is_blocked: isActuallyBlocked }, scheduleData)
                 };
             });
         } catch (error) {

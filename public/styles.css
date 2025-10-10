@@ -1140,7 +1140,7 @@ footer p {
 
 .managed-device-header {
     display: flex;
-    justify-content: between;
+    justify-content: space-between;
     align-items: center;
     margin-bottom: 15px;
 }
@@ -1179,10 +1179,165 @@ footer p {
     color: var(--accent-danger);
 }
 
+.device-status.allowed {
+    background: rgba(39, 174, 96, 0.1);
+    color: var(--accent-success);
+}
+
+/* Visual status cards */
+.managed-device-card.device-blocked {
+    border-left: 4px solid var(--accent-danger);
+    background: var(--bg-secondary);
+    position: relative;
+}
+
+.managed-device-card.device-blocked::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(231, 76, 60, 0.05);
+    border-radius: 12px;
+    pointer-events: none;
+}
+
+.managed-device-card.device-allowed {
+    border-left: 4px solid var(--accent-success);
+    background: var(--bg-secondary);
+    position: relative;
+}
+
+.managed-device-card.device-allowed::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(39, 174, 96, 0.05);
+    border-radius: 12px;
+    pointer-events: none;
+}
+
+/* Device header with indicators */
+.device-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 15px;
+    position: relative;
+    z-index: 1;
+}
+
+.device-name-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1;
+}
+
+.device-name {
+    font-weight: 600;
+    font-size: 1.1rem;
+    color: var(--text-primary);
+}
+
+.device-indicators {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Online/Offline indicator */
+.online-indicator {
+    font-size: 0.8rem;
+}
+
+.online-indicator.online {
+    color: var(--accent-success);
+    animation: pulse 2s infinite;
+}
+
+.online-indicator.offline {
+    color: var(--text-secondary);
+}
+
+/* Status icons */
+.status-icon {
+    font-size: 1rem;
+}
+
+.status-icon.blocked {
+    color: var(--accent-danger);
+}
+
+.status-icon.allowed {
+    color: var(--accent-success);
+}
+
+/* Time display indicators */
+.time-remaining {
+    color: var(--accent-success);
+    font-weight: 500;
+}
+
+.time-expired {
+    color: var(--accent-danger);
+    font-weight: 600;
+}
+
+.time-unlimited {
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+/* Device info styling */
+.device-details {
+    position: relative;
+    z-index: 1;
+}
+
+.device-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+}
+
+.device-info .label {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.device-info .value {
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    font-family: 'Courier New', monospace;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+.device-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+    position: relative;
+    z-index: 1;
+}
+
 .managed-device-controls {
     display: flex;
     gap: 10px;
     margin-top: 15px;
+    position: relative;
+    z-index: 1;
 }
 
 .time-remaining {
