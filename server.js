@@ -194,6 +194,17 @@ app.get('/api/permissions', async (req, res) => {
     }
 });
 
+app.get('/api/permissions/test-blocking', async (req, res) => {
+    try {
+        logger.info('Testing device blocking capability');
+        const testResult = await unifiController.testDeviceBlockingCapability();
+        res.json(testResult);
+    } catch (error) {
+        logger.error('Error testing blocking capability:', error.message);
+        res.status(500).json({ error: 'Failed to test blocking capability', details: error.message });
+    }
+});
+
 // Parental Controls API endpoints
 app.get('/api/parental/devices/available', async (req, res) => {
     try {

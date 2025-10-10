@@ -479,11 +479,22 @@ class UnifiController {
                 const responseData = error.response.data;
                 
                 if (status === 403) {
-                    throw new Error('Access denied. The UniFi user account needs "Full Management" permissions. Go to UniFi Settings > Admins, find your user account, and ensure it has "Full Management" role or at least "Device Management" permissions to block devices.');
+                    // Enhanced 403 error with more possibilities
+                    const possibleCauses = [
+                        'User account lacks device management permissions',
+                        'UniFi controller firmware may have permission changes',
+                        'Site-specific permission restrictions',
+                        'Controller in read-only mode or maintenance',
+                        'API endpoint access restricted'
+                    ];
+                    
+                    throw new Error(`Access denied (403). This could be caused by:\n${possibleCauses.map(c => `• ${c}`).join('\n')}\n\nRun permission diagnostic via /api/permissions for detailed analysis.`);
                 } else if (status === 401) {
                     throw new Error('Authentication failed. Please check UniFi credentials.');
                 } else if (status === 404) {
                     throw new Error('Device not found or UniFi site incorrect.');
+                } else if (status === 400) {
+                    throw new Error(`Bad request (400): Device MAC may be invalid or already in requested state. ${responseData?.error?.message || ''}`);
                 } else {
                     throw new Error(`UniFi controller returned ${status}: ${responseData?.error?.message || error.message}`);
                 }
@@ -601,15 +612,41 @@ class UnifiController {
 
             if (response.data?.meta?.rc === 'ok' && response.data.data?.length > 0) {
                 const userInfo = response.data.data[0];
+                
+                // Enhanced permission analysis
+                const isSuperAdmin = userInfo.is_super || false;
+                const role = userInfo.role || 'unknown';
+                const permissions = userInfo.permissions || [];
+                
+                // Check for various permission indicators
+                const hasAdminRole = role === 'admin';
+                const hasFullManagement = role === 'Full Management' || role === 'full-management';
+                const hasDevicePermissions = permissions.some(p => 
+                    p.includes('device') || p.includes('block') || p.includes('client') || p.includes('sta')
+                );
+                
+                const canManageDevices = isSuperAdmin || hasAdminRole || hasFullManagement || hasDevicePermissions;
+                
                 return {
                     success: true,
                     username: userInfo.name,
                     email: userInfo.email,
-                    role: userInfo.role,
-                    is_super: userInfo.is_super || false,
-                    permissions: userInfo.permissions || [],
-                    canManageDevices: userInfo.is_super || userInfo.role === 'admin' || (userInfo.permissions && userInfo.permissions.includes('device.block')),
-                    message: userInfo.is_super ? 'Super admin - full access' : `Role: ${userInfo.role}`
+                    role: role,
+                    is_super: isSuperAdmin,
+                    permissions: permissions,
+                    canManageDevices: canManageDevices,
+                    details: {
+                        isSuperAdmin,
+                        hasAdminRole,
+                        hasFullManagement,
+                        hasDevicePermissions,
+                        permissionsList: permissions
+                    },
+                    message: isSuperAdmin ? 'Super admin - full access' : 
+                            hasFullManagement ? 'Full Management role - should have device access' :
+                            hasAdminRole ? 'Admin role - should have device access' :
+                            hasDevicePermissions ? 'Has device-specific permissions' :
+                            'Limited permissions - may not be able to block devices'
                 };
             }
 
@@ -617,6 +654,79 @@ class UnifiController {
         } catch (error) {
             console.error('Error checking user permissions:', error.message);
             return { success: false, canManageDevices: false, error: error.message };
+        }
+    }
+
+    // Test device blocking capability without actually blocking
+    async testDeviceBlockingCapability() {
+        if (!this.isConfigured()) {
+            throw new Error('UniFi controller not configured');
+        }
+
+        try {
+            await this.login();
+            
+            // First check permissions
+            const permissionCheck = await this.checkUserPermissions();
+            
+            // Try to get a list of clients to test API access
+            const clientsResponse = await this.makeAuthenticatedRequest(`/api/s/${this.site}/stat/sta`);
+            
+            if (!clientsResponse || !clientsResponse.data) {
+                return {
+                    success: false,
+                    error: 'Cannot access client list - insufficient permissions',
+                    permissionCheck
+                };
+            }
+            
+            // Test with a fake MAC to see what error we get
+            try {
+                await this.makeAuthenticatedRequest(
+                    `/api/s/${this.site}/cmd/stamgr`,
+                    'POST',
+                    {
+                        cmd: 'block-sta',
+                        mac: '00:00:00:00:00:00' // Fake MAC that won't exist
+                    }
+                );
+            } catch (testError) {
+                // Analyze the test error
+                if (testError.response) {
+                    const status = testError.response.status;
+                    if (status === 403) {
+                        return {
+                            success: false,
+                            error: 'Device blocking is forbidden - permission issue confirmed',
+                            httpStatus: status,
+                            permissionCheck,
+                            recommendation: 'User account needs device management permissions in UniFi'
+                        };
+                    } else if (status === 400 || status === 404) {
+                        // These are expected for fake MAC - means permissions are OK
+                        return {
+                            success: true,
+                            message: 'Device blocking permissions appear to be working',
+                            httpStatus: status,
+                            permissionCheck,
+                            note: 'Test with fake MAC returned expected error - permissions look good'
+                        };
+                    }
+                }
+            }
+            
+            return {
+                success: true,
+                message: 'Permission test completed successfully',
+                permissionCheck
+            };
+            
+        } catch (error) {
+            return {
+                success: false,
+                error: `Permission test failed: ${error.message}`,
+                permissionCheck: null
+            };
         }
     }
 }
