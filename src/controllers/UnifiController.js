@@ -51,11 +51,15 @@ class UnifiController {
             }, 10000);
 
             // Art of WiFi library login pattern
+            console.log(`[DEBUG] Attempting login to ${this.host}:${this.port} as ${this.username}`);
+            console.log(`[DEBUG] SSL enabled: ${!this.controller.options?.insecure}`);
+            
             this.controller.login(this.username, this.password, (error) => {
                 clearTimeout(timeout);
                 
                 if (error) {
                     console.error('Failed to login to UniFi controller:', error);
+                    console.error('Error details:', error.code, error.errno, error.syscall);
                     this.isLoggedIn = false;
                     reject(new Error(`Authentication failed: ${error.message || error}`));
                 } else {

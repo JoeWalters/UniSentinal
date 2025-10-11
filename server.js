@@ -106,6 +106,11 @@ app.get('/styles.css', (req, res) => {
     res.sendFile(filePath);
 });
 
+// Favicon route to prevent 404
+app.get('/favicon.ico', (req, res) => {
+    res.status(204).end(); // No content
+});
+
 // CSS Test route for debugging
 app.get('/css-test', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'css-test.html'));
@@ -194,18 +199,58 @@ app.get('/api/status', async (req, res) => {
 
 app.get('/api/stats', async (req, res) => {
     try {
-        const allKnownDevices = await unifiController.getAllKnownDevices();
-        const dbStats = await dbManager.getDeviceStats();
+        console.log('[DEBUG] /api/stats endpoint called');
         
-        res.json({
-            totalKnown: allKnownDevices.size,
-            newDevices: dbStats.unacknowledged,
-            acknowledgedDevices: dbStats.acknowledged,
-            detectedToday: dbStats.today
+        // If UniFi is not configured, return default stats
+        if (!unifiController.isConfigured()) {
+            const dbStats = await dbManager.getDeviceStats();
+            return res.json({
+                totalKnown: 0,
+                newDevices: dbStats.unacknowledged || 0,
+                acknowledgedDevices: dbStats.acknowledged || 0,
+                detectedToday: dbStats.today || 0,
+                unifiConnected: false
+            });
+        }
+        
+        // Try to get UniFi data with timeout
+        const timeout = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Stats timeout')), 5000);
         });
+        
+        const statsPromise = (async () => {
+            const allKnownDevices = await unifiController.getAllKnownDevices();
+            const dbStats = await dbManager.getDeviceStats();
+            return {
+                totalKnown: allKnownDevices.size,
+                newDevices: dbStats.unacknowledged || 0,
+                acknowledgedDevices: dbStats.acknowledged || 0,
+                detectedToday: dbStats.today || 0,
+                unifiConnected: true
+            };
+        })();
+        
+        const result = await Promise.race([statsPromise, timeout]);
+        res.json(result);
+        
     } catch (error) {
+        console.error('[ERROR] /api/stats error:', error.message);
         logger.error('Error getting stats:', error.message);
-        res.status(500).json({ error: 'Failed to get stats' });
+        
+        // Fallback to database-only stats
+        try {
+            const dbStats = await dbManager.getDeviceStats();
+            res.json({
+                totalKnown: 0,
+                newDevices: dbStats.unacknowledged || 0,
+                acknowledgedDevices: dbStats.acknowledged || 0,
+                detectedToday: dbStats.today || 0,
+                unifiConnected: false,
+                error: 'UniFi connection failed'
+            });
+        } catch (dbError) {
+            res.status(500).json({ error: 'Failed to get stats' });
+        }
     }
 });
 
