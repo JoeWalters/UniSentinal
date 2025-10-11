@@ -384,16 +384,23 @@ class UnifiController {
             await this.rateLimit();
             const clients = await this.getClients();
             
-            // Return devices in the format expected by the server
+
+            
+            // Enhanced device mapping with all available fields
             const newDevices = clients.map(client => ({
                 mac: client.mac,
-                name: client.name || client.hostname || 'Unknown Device',
+                name: this.getDeviceName(client),
+                hostname: client.hostname || null,
                 ip: client.ip,
-                is_online: client.is_wired || client.is_wireless,
+                vendor: this.getVendorName(client),
+                is_online: this.isDeviceOnline(client),
                 is_blocked: client.blocked || false,
                 first_seen: client.first_seen || Date.now(),
                 last_seen: client.last_seen || Date.now(),
-                device_type: this.getDeviceType(client)
+                device_type: this.getDeviceType(client),
+                os_name: client.os_name ? String(client.os_name) : null,
+                note: client.noted ? String(client.noted) : null,
+                uptime: client.uptime || null
             }));
             
             console.log(`📱 Found ${newDevices.length} devices (${newDevices.filter(d => d.is_online).length} online)`);
@@ -480,20 +487,119 @@ class UnifiController {
         }
     }
 
+    // Helper method to get vendor information
+    getVendorName(client) {
+        // Priority: oui -> dev_vendor -> vendor_oui
+        if (client.oui && typeof client.oui === 'string' && client.oui.trim() !== '') {
+            return client.oui.trim();
+        }
+        
+        if (client.dev_vendor && typeof client.dev_vendor === 'string' && client.dev_vendor.trim() !== '') {
+            return client.dev_vendor.trim();
+        }
+        
+        if (client.vendor_oui && typeof client.vendor_oui === 'string' && client.vendor_oui.trim() !== '') {
+            return client.vendor_oui.trim();
+        }
+        
+        return null;
+    }
+
+    // Helper method to determine if device is online
+    isDeviceOnline(client) {
+        // Check if device is wired and connected
+        if (client.is_wired) {
+            return true;
+        }
+        
+        // For wireless devices, check last seen time
+        if (client.last_seen) {
+            const lastSeenTime = new Date(client.last_seen * 1000); // Convert from Unix timestamp
+            const now = new Date();
+            const timeDiff = now - lastSeenTime;
+            // Consider online if seen within last 5 minutes
+            return timeDiff < (5 * 60 * 1000);
+        }
+        
+        // Check if device has active network connection
+        if (client.network || client.ip) {
+            return true;
+        }
+        
+        return false;
+    }
+
+    // Helper method to get the best available device name
+    getDeviceName(client) {
+        // Priority order: name -> hostname -> alias -> vendor + MAC -> Unknown Device
+        if (client.name && typeof client.name === 'string' && client.name.trim() !== '') {
+            return client.name.trim();
+        }
+        
+        if (client.hostname && typeof client.hostname === 'string' && client.hostname.trim() !== '') {
+            return client.hostname.trim();
+        }
+        
+        if (client.alias && typeof client.alias === 'string' && client.alias.trim() !== '') {
+            return client.alias.trim();
+        }
+        
+        // Try to create a meaningful name from vendor info
+        const vendor = this.getVendorName(client);
+        if (vendor) {
+            const shortMac = client.mac ? client.mac.substring(client.mac.length - 5).replace(':', '') : 'Device';
+            return `${vendor} (${shortMac})`;
+        }
+        
+        // Last resort - use MAC address
+        if (client.mac) {
+            const shortMac = client.mac.substring(client.mac.length - 8).replace(':', '');
+            return `Device-${shortMac}`;
+        }
+        
+        return 'Unknown Device';
+    }
+
     // Helper method to determine device type
     getDeviceType(client) {
+        // Connection type
         if (client.is_wired) return 'wired';
-        if (client.is_wireless) return 'wireless';
-        if (client.device_type) return client.device_type.toLowerCase();
+        
+        // Use UniFi's device categorization if available
+        if (client.dev_cat) {
+            switch(client.dev_cat) {
+                case 1: return 'computer';
+                case 2: return 'mobile';
+                case 3: return 'media';
+                case 4: return 'gaming';
+                case 5: return 'smart_home';
+                case 6: return 'networking';
+                default: return 'wireless';
+            }
+        }
+        
+        // Try to determine from device family/vendor
+        if (client.dev_family && typeof client.dev_family === 'string') {
+            const family = client.dev_family.toLowerCase();
+            if (family.includes('phone') || family.includes('mobile')) return 'mobile';
+            if (family.includes('computer') || family.includes('laptop')) return 'computer';
+            if (family.includes('tv') || family.includes('media')) return 'media';
+            if (family.includes('game') || family.includes('console')) return 'gaming';
+        }
         
         // Try to guess from device info
         const name = (client.name || client.hostname || '').toLowerCase();
-        if (name.includes('phone') || name.includes('iphone') || name.includes('android')) return 'mobile';
-        if (name.includes('laptop') || name.includes('macbook') || name.includes('pc')) return 'computer';
-        if (name.includes('tv') || name.includes('roku') || name.includes('apple tv')) return 'media';
-        if (name.includes('echo') || name.includes('alexa') || name.includes('google')) return 'smart_home';
+        const vendor = this.getVendorName(client);
+        const vendorLower = vendor ? vendor.toLowerCase() : '';
         
-        return 'unknown';
+        if (name.includes('phone') || name.includes('iphone') || name.includes('android') || (vendorLower.includes('apple') && name.includes('iphone'))) return 'mobile';
+        if (name.includes('laptop') || name.includes('macbook') || name.includes('pc') || name.includes('computer')) return 'computer';
+        if (name.includes('tv') || name.includes('roku') || name.includes('apple tv') || name.includes('chromecast') || name.includes('shield')) return 'media';
+        if (name.includes('echo') || name.includes('alexa') || name.includes('google') || name.includes('nest')) return 'smart_home';
+        if (name.includes('xbox') || name.includes('playstation') || name.includes('nintendo') || name.includes('gaming')) return 'gaming';
+        
+        // Default to wireless if not wired
+        return client.is_wired ? 'wired' : 'wireless';
     }
 }
 

@@ -31,11 +31,18 @@ class DatabaseManager {
             CREATE TABLE IF NOT EXISTS devices (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 mac TEXT UNIQUE NOT NULL,
+                name TEXT,
                 ip TEXT,
                 hostname TEXT,
                 vendor TEXT,
                 first_seen TEXT,
                 last_seen TEXT,
+                is_online BOOLEAN DEFAULT 0,
+                is_blocked BOOLEAN DEFAULT 0,
+                device_type TEXT,
+                os_name TEXT,
+                note TEXT,
+                uptime INTEGER,
                 is_wired BOOLEAN DEFAULT 0,
                 ap_mac TEXT,
                 network TEXT,
@@ -91,9 +98,41 @@ class DatabaseManager {
             
             this.db.exec(createParentalLogsTable);
             console.log('Parental logs table ready');
+            
+            // Migrate existing schema to add new columns
+            await this.migrateSchema();
         } catch (error) {
             console.error('Error creating database tables:', error);
             throw error;
+        }
+    }
+
+    async migrateSchema() {
+        try {
+            // Get current table schema
+            const columns = this.db.prepare("PRAGMA table_info(devices)").all();
+            const columnNames = columns.map(col => col.name);
+            
+            // Add missing columns to devices table
+            const newColumns = [
+                { name: 'name', type: 'TEXT' },
+                { name: 'is_online', type: 'BOOLEAN DEFAULT 0' },
+                { name: 'is_blocked', type: 'BOOLEAN DEFAULT 0' },
+                { name: 'device_type', type: 'TEXT' },
+                { name: 'os_name', type: 'TEXT' },
+                { name: 'note', type: 'TEXT' },
+                { name: 'uptime', type: 'INTEGER' }
+            ];
+            
+            for (const column of newColumns) {
+                if (!columnNames.includes(column.name)) {
+                    console.log(`Adding column '${column.name}' to devices table`);
+                    this.db.exec(`ALTER TABLE devices ADD COLUMN ${column.name} ${column.type}`);
+                }
+            }
+        } catch (error) {
+            console.error('Error migrating schema:', error);
+            // Don't throw - continue with existing schema if migration fails
         }
     }
 
@@ -101,10 +140,11 @@ class DatabaseManager {
         if (!devices || devices.length === 0) return;
 
         const insertDevice = this.db.prepare(`
-            INSERT OR IGNORE INTO devices (
-                mac, ip, hostname, vendor, first_seen, last_seen,
+            INSERT OR REPLACE INTO devices (
+                mac, name, ip, hostname, vendor, first_seen, last_seen,
+                is_online, is_blocked, device_type, os_name, note, uptime,
                 is_wired, ap_mac, network, signal, tx_bytes, rx_bytes, detected_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
         try {
@@ -112,11 +152,18 @@ class DatabaseManager {
                 for (const device of devices) {
                     insertDevice.run(
                         device.mac,
+                        device.name || null,
                         device.ip,
                         device.hostname,
                         device.vendor,
                         device.first_seen,
                         device.last_seen,
+                        device.is_online ? 1 : 0,
+                        device.is_blocked ? 1 : 0,
+                        device.device_type,
+                        device.os_name,
+                        device.note,
+                        device.uptime,
                         device.is_wired ? 1 : 0,
                         device.ap_mac,
                         device.network,
