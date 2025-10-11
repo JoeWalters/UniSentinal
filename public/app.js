@@ -1503,6 +1503,11 @@ class UniFiSentinel {
         const devicesList = document.getElementById('availableDevicesList');
         const searchInput = document.getElementById('deviceSearchInput');
         
+        // Debug: Log device data
+        const wiredCount = devices.filter(d => d.is_wired).length;
+        const wirelessCount = devices.filter(d => !d.is_wired).length;
+        console.log(`🔧 Frontend: Received ${devices.length} devices (${wiredCount} wired, ${wirelessCount} wireless)`);
+        
         // Filter out devices that are already managed
         const availableDevices = devices.filter(device => !device.isManaged);
         
@@ -1576,6 +1581,8 @@ class UniFiSentinel {
         const statusFilter = document.getElementById('statusFilter').value;
         const connectionFilter = document.getElementById('connectionFilter').value;
         const vendorFilter = document.getElementById('vendorFilter').value;
+        
+        console.log(`🔧 Frontend: Applying filters - connection: ${connectionFilter}, status: ${statusFilter}`);
 
         let filtered = this.allAvailableDevices.filter(device => {
             // Text search
@@ -1609,6 +1616,10 @@ class UniFiSentinel {
             return matchesSearch && matchesStatus && matchesConnection && matchesVendor;
         });
 
+        const wiredFiltered = filtered.filter(d => d.is_wired).length;
+        const wirelessFiltered = filtered.filter(d => !d.is_wired).length;
+        console.log(`🔧 Frontend: After filtering - showing ${filtered.length} devices (${wiredFiltered} wired, ${wirelessFiltered} wireless)`);
+        
         this.renderFilteredDevices(filtered);
         this.updateDeviceCountInfo(filtered.length, this.allAvailableDevices.length);
     }

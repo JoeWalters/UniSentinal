@@ -336,6 +336,9 @@ app.get('/api/permissions/test-blocking', async (req, res) => {
 app.get('/api/parental/devices/available', async (req, res) => {
     try {
         const devices = await parentalControls.getAvailableDevices();
+        const wiredCount = devices.filter(d => d.is_wired).length;
+        const wirelessCount = devices.filter(d => !d.is_wired).length;
+        console.log(`🔧 API /devices/available: Returning ${devices.length} devices (${wiredCount} wired, ${wirelessCount} wireless)`);
         res.json(devices);
     } catch (error) {
         logger.error('Error getting available devices:', error.message);

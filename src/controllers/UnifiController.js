@@ -400,10 +400,12 @@ class UnifiController {
                 device_type: this.getDeviceType(client),
                 os_name: client.os_name ? String(client.os_name) : null,
                 note: client.noted ? String(client.noted) : null,
-                uptime: client.uptime || null
+                uptime: client.uptime || null,
+                // Add debugging fields
+                is_wired: client.is_wired || false
             }));
             
-            console.log(`📱 Found ${newDevices.length} devices (${newDevices.filter(d => d.is_online).length} online)`);
+            console.log(`📱 Found ${newDevices.length} devices (${newDevices.filter(d => d.is_online).length} online, ${newDevices.filter(d => d.is_wired).length} wired)`);
             return newDevices;
         } catch (error) {
             console.error('❌ Device scan failed:', error.message);
