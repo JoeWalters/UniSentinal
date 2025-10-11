@@ -3,6 +3,7 @@ class UniFiSentinel {
         this.devices = [];
         this.selectedDevice = null;
         this.autoRefreshInterval = null;
+        this.statusRefreshInterval = null;
         this.init();
     }
 
@@ -569,36 +570,68 @@ class UniFiSentinel {
     }
 
     showNotification(message, type = 'info') {
-        // Simple notification system - you could enhance this with a proper toast library
+        // Initialize notification container if it doesn't exist
+        let container = document.getElementById('notification-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'notification-container';
+            Object.assign(container.style, {
+                position: 'fixed',
+                top: '20px',
+                right: '20px',
+                zIndex: '9999',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px',
+                maxWidth: '300px'
+            });
+            document.body.appendChild(container);
+        }
+
         const notification = document.createElement('div');
         notification.className = `notification notification-${type}`;
         notification.innerHTML = `
-            <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
+            <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : type === 'warning' ? 'exclamation-triangle' : 'info-circle'}"></i>
             ${message}
         `;
 
         // Add notification styles
         Object.assign(notification.style, {
-            position: 'fixed',
-            top: '20px',
-            right: '20px',
             padding: '15px 20px',
-            backgroundColor: type === 'success' ? '#27ae60' : type === 'error' ? '#e74c3c' : '#3498db',
+            backgroundColor: type === 'success' ? '#27ae60' : type === 'error' ? '#e74c3c' : type === 'warning' ? '#f39c12' : '#3498db',
             color: 'white',
             borderRadius: '8px',
             boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
-            zIndex: '9999',
-            maxWidth: '300px',
             fontSize: '0.9rem',
             display: 'flex',
             alignItems: 'center',
-            gap: '10px'
+            gap: '10px',
+            opacity: '0',
+            transform: 'translateX(100%)',
+            transition: 'all 0.3s ease'
         });
 
-        document.body.appendChild(notification);
+        container.appendChild(notification);
 
+        // Animate in
+        requestAnimationFrame(() => {
+            notification.style.opacity = '1';
+            notification.style.transform = 'translateX(0)';
+        });
+
+        // Auto remove after 4 seconds
         setTimeout(() => {
-            notification.remove();
+            notification.style.opacity = '0';
+            notification.style.transform = 'translateX(100%)';
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+                // Remove container if no notifications left
+                if (container.children.length === 0) {
+                    container.remove();
+                }
+            }, 300);
         }, 4000);
     }
 
@@ -671,16 +704,99 @@ class UniFiSentinel {
     }
 
     startAutoRefresh() {
-        this.autoRefreshInterval = setInterval(() => {
-            this.loadDevices();
-            this.checkStatus();
-        }, 30000); // Refresh every 30 seconds
+        // Full refresh every 30 seconds
+        this.autoRefreshInterval = setInterval(async () => {
+            console.log('🔄 Auto-refreshing data...');
+            await this.loadDevices();
+            await this.checkStatus();
+            
+            // Also refresh parental controls data to show block/unblock status changes
+            const currentTab = document.querySelector('.tab-button.active')?.getAttribute('data-tab');
+            if (currentTab === 'parental' || currentTab === 'parental-controls') {
+                console.log('🔄 Auto-refreshing parental controls...');
+                await this.loadParentalControlsData();
+            }
+        }, 30000); // Full refresh every 30 seconds
+        
+        // Quick status refresh every 10 seconds for parental controls
+        this.statusRefreshInterval = setInterval(async () => {
+            await this.refreshParentalControlsStatus();
+        }, 10000); // Quick status update every 10 seconds
     }
 
     stopAutoRefresh() {
         if (this.autoRefreshInterval) {
             clearInterval(this.autoRefreshInterval);
             this.autoRefreshInterval = null;
+        }
+        if (this.statusRefreshInterval) {
+            clearInterval(this.statusRefreshInterval);
+            this.statusRefreshInterval = null;
+        }
+    }
+
+    // Quick status refresh for parental controls without full reload
+    async refreshParentalControlsStatus() {
+        const currentTab = document.querySelector('.tab-button.active')?.getAttribute('data-tab');
+        if (currentTab !== 'parental' && currentTab !== 'parental-controls') {
+            return; // Only refresh if parental controls tab is active
+        }
+
+        // Show subtle refresh indicator
+        const refreshBtn = document.getElementById('refreshParentalBtn');
+        const originalContent = refreshBtn?.innerHTML;
+        if (refreshBtn) {
+            refreshBtn.innerHTML = '<i class="fas fa-sync-alt fa-spin"></i> Refresh';
+        }
+
+        try {
+            const response = await fetch('/api/parental/devices/managed');
+            if (!response.ok) return;
+            
+            const managedDevices = await response.json();
+            
+            // Update only the status indicators without full re-render
+            managedDevices.forEach(device => {
+                const deviceCard = document.querySelector(`[data-mac="${device.mac}"]`);
+                if (!deviceCard) return;
+                
+                const isBlocked = device.is_blocked;
+                
+                // Update status badge
+                const statusDiv = deviceCard.querySelector('.device-status');
+                if (statusDiv) {
+                    statusDiv.textContent = isBlocked ? 'Blocked' : 'Allowed';
+                    statusDiv.className = `device-status ${isBlocked ? 'blocked' : 'allowed'}`;
+                }
+                
+                // Update status icon
+                const statusIcon = deviceCard.querySelector('.status-icon');
+                if (statusIcon) {
+                    statusIcon.className = `fas ${isBlocked ? 'fa-ban' : 'fa-check'} status-icon ${isBlocked ? 'blocked' : 'allowed'}`;
+                }
+                
+                // Update card styling
+                deviceCard.className = `managed-device-card ${isBlocked ? 'device-blocked' : 'device-allowed'}`;
+                
+                // Update toggle button
+                const toggleBtn = deviceCard.querySelector('.toggle-block-btn');
+                if (toggleBtn) {
+                    toggleBtn.className = `btn btn-small toggle-block-btn ${isBlocked ? 'btn-success' : 'btn-danger'}`;
+                    toggleBtn.setAttribute('data-blocked', isBlocked.toString());
+                    toggleBtn.innerHTML = `<i class="fas ${isBlocked ? 'fa-check' : 'fa-ban'}"></i> ${isBlocked ? 'Unblock' : 'Block'}`;
+                }
+            });
+            
+            console.log('🔄 Status refreshed for parental controls');
+        } catch (error) {
+            console.log('Status refresh failed:', error.message);
+        } finally {
+            // Restore refresh button
+            if (refreshBtn && originalContent) {
+                setTimeout(() => {
+                    refreshBtn.innerHTML = originalContent;
+                }, 500); // Show spinning for at least 500ms
+            }
         }
     }
 
@@ -1225,13 +1341,28 @@ class UniFiSentinel {
                                 <span class="value">${device.vendor}</span>
                             </div>
                         ` : ''}
+                        ${device.bonusTime && device.bonusTime.isActive ? `
+                            <div class="device-info bonus-time-info">
+                                <span class="label">Bonus Time:</span>
+                                <span class="value bonus-time-remaining">
+                                    <i class="fas fa-clock"></i> ${device.bonusTime.remainingMinutes} min left
+                                </span>
+                            </div>
+                        ` : ''}
                     </div>
                     <div class="device-actions">
-                        <button class="btn btn-small toggle-block-btn ${isBlocked ? 'btn-success' : 'btn-danger'}" 
-                                data-mac="${device.mac}" data-blocked="${isBlocked}">
-                            <i class="fas ${isBlocked ? 'fa-check' : 'fa-ban'}"></i>
-                            ${isBlocked ? 'Unblock' : 'Block'}
-                        </button>
+                        ${device.bonusTime && device.bonusTime.isActive ? `
+                            <button class="btn btn-small btn-warning cancel-bonus-btn" 
+                                    data-mac="${device.mac}">
+                                <i class="fas fa-times"></i> Cancel Bonus Time
+                            </button>
+                        ` : `
+                            <button class="btn btn-small toggle-block-btn ${isBlocked ? 'btn-success' : 'btn-danger'}" 
+                                    data-mac="${device.mac}" data-blocked="${isBlocked}">
+                                <i class="fas ${isBlocked ? 'fa-check' : 'fa-ban'}"></i>
+                                ${isBlocked ? 'Unblock' : 'Block'}
+                            </button>
+                        `}
                         <button class="btn btn-small btn-secondary manage-device-btn" 
                                 data-mac="${device.mac}">
                             <i class="fas fa-cog"></i> Manage
@@ -1267,6 +1398,9 @@ class UniFiSentinel {
             } else if (button.classList.contains('manage-device-btn')) {
                 e.preventDefault();
                 this.manageDevice(mac);
+            } else if (button.classList.contains('cancel-bonus-btn')) {
+                e.preventDefault();
+                this.cancelBonusTime(mac);
             }
         };
         
@@ -1748,6 +1882,12 @@ class UniFiSentinel {
             unblockBtn.style.display = 'none';
         }
 
+        // Remove existing event listeners to prevent duplicates
+        blockBtn.onclick = null;
+        unblockBtn.onclick = null;
+        tempBlockBtn.onclick = null;
+        addBonusTimeBtn.onclick = null;
+
         // Add event listeners
         blockBtn.onclick = () => this.blockManagedDevice(device.mac);
         unblockBtn.onclick = () => this.unblockManagedDevice(device.mac);
@@ -1817,14 +1957,61 @@ class UniFiSentinel {
                 })
             });
 
-            if (!response.ok) throw new Error('Failed to add bonus time');
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                throw new Error(errorData.error || 'Failed to add bonus time');
+            }
 
+            const result = await response.json();
             this.showNotification(`Added ${minutes} minutes of bonus time`, 'success');
             document.getElementById('bonusMinutes').value = '';
-            await this.refreshDeviceManagementModal();
+            
+            // Refresh all views and page data to show updated status
+            setTimeout(async () => {
+                await this.refreshParentalControls();
+                await this.loadDevices(); // Refresh main device list
+                if (this.currentManagedDevice && this.currentManagedDevice.mac === mac) {
+                    await this.refreshDeviceManagementModal();
+                }
+            }, 500); // Small delay to let the backend process the change
+            
         } catch (error) {
             console.error('Error adding bonus time:', error);
             this.showError('Failed to add bonus time');
+        }
+    }
+
+    // Cancel bonus time for device
+    async cancelBonusTime(mac) {
+        if (!confirm('Are you sure you want to cancel the bonus time? The device will be re-blocked if scheduled.')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/parental/devices/${mac}/bonus-time`, {
+                method: 'DELETE'
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                throw new Error(errorData.error || 'Failed to cancel bonus time');
+            }
+
+            const result = await response.json();
+            this.showNotification('Bonus time cancelled', 'success');
+            
+            // Refresh all views and page data to show updated status
+            setTimeout(async () => {
+                await this.refreshParentalControls();
+                await this.loadDevices(); // Refresh main device list
+                if (this.currentManagedDevice && this.currentManagedDevice.mac === mac) {
+                    await this.refreshDeviceManagementModal();
+                }
+            }, 500);
+            
+        } catch (error) {
+            console.error('Error cancelling bonus time:', error);
+            this.showError('Failed to cancel bonus time: ' + error.message);
         }
     }
 

@@ -1221,6 +1221,45 @@ footer p {
     pointer-events: none;
 }
 
+/* Bonus time specific styles */
+.bonus-time-info {
+    background: rgba(243, 156, 18, 0.1);
+    border-left: 3px solid var(--accent-warning);
+    padding: 8px 12px;
+    border-radius: 6px;
+    margin-top: 8px;
+}
+
+.bonus-time-info .label {
+    color: var(--accent-warning);
+    font-weight: 600;
+}
+
+.bonus-time-remaining {
+    color: var(--accent-warning);
+    font-weight: 500;
+    animation: pulse 2s infinite;
+}
+
+.bonus-time-remaining i {
+    margin-right: 4px;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+.cancel-bonus-btn {
+    background: var(--accent-warning) !important;
+    border-color: var(--accent-warning) !important;
+}
+
+.cancel-bonus-btn:hover {
+    background: #e67e22 !important;
+    border-color: #e67e22 !important;
+}
+
 /* Device header with indicators */
 .device-header {
     display: flex;

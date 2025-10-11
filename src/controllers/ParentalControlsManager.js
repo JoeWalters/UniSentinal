@@ -7,6 +7,7 @@ class ParentalControlsManager {
         this.db = databaseManager;
         this.blockedDevices = new Set(); // Cache of currently blocked devices
         this.scheduleCheckInterval = null;
+        this.bonusTimeTimers = new Map(); // Track active bonus time sessions: mac -> {timer, endTime, originallyBlocked}
         
         // Start background processes
         this.startScheduleChecker();
@@ -62,7 +63,11 @@ class ParentalControlsManager {
     // Block device on UniFi controller
     async blockDevice(mac, reason = 'manual', duration = null) {
         try {
-            const success = await this.unifiController.blockDevice(mac);
+            const success = await this.retryUnifiOperation(
+                () => this.unifiController.blockDevice(mac),
+                `Block device ${mac}`
+            );
+            
             if (success) {
                 this.blockedDevices.add(mac);
                 await this.db.updateDeviceBlockStatus(mac, true, reason, duration);
@@ -79,7 +84,11 @@ class ParentalControlsManager {
     // Unblock device on UniFi controller
     async unblockDevice(mac, reason = 'manual') {
         try {
-            const success = await this.unifiController.unblockDevice(mac);
+            const success = await this.retryUnifiOperation(
+                () => this.unifiController.unblockDevice(mac),
+                `Unblock device ${mac}`
+            );
+            
             if (success) {
                 this.blockedDevices.delete(mac);
                 await this.db.updateDeviceBlockStatus(mac, false, reason);
@@ -102,6 +111,124 @@ class ParentalControlsManager {
             console.error('Error setting time limit:', error);
             throw error;
         }
+    }
+
+    // Add bonus time to device - unblocks device and sets timer for auto re-blocking
+    async addBonusTime(mac, bonusMinutes) {
+        try {
+            if (!bonusMinutes || bonusMinutes <= 0) {
+                throw new Error('Bonus time must be a positive number');
+            }
+
+            // Get current device settings
+            const device = await this.db.getManagedDevice(mac);
+            if (!device) {
+                throw new Error('Device not found in parental controls');
+            }
+
+            // Check if device is currently blocked to know if we should re-block later
+            const isCurrentlyBlocked = await this.isDeviceBlocked(mac);
+            
+            // Clear any existing bonus time timer for this device
+            if (this.bonusTimeTimers.has(mac)) {
+                clearTimeout(this.bonusTimeTimers.get(mac).timer);
+                console.log(`Cleared existing bonus time for device ${mac}`);
+            }
+
+            // Calculate end time
+            const endTime = new Date(Date.now() + (bonusMinutes * 60 * 1000));
+            
+            // Unblock the device immediately
+            console.log(`🎁 Starting ${bonusMinutes}-minute bonus time for device ${mac}`);
+            if (isCurrentlyBlocked || await this.shouldDeviceBeBlockedNow(mac)) {
+                await this.unblockDevice(mac);
+                console.log(`📱 Device ${mac} unblocked for bonus time`);
+            }
+
+            // Set timer to re-block device when bonus time expires
+            const timer = setTimeout(async () => {
+                try {
+                    console.log(`⏰ Bonus time expired for device ${mac}`);
+                    
+                    // Remove from active timers
+                    this.bonusTimeTimers.delete(mac);
+                    
+                    // Re-block device if it should be blocked based on schedule/rules
+                    const shouldBeBlocked = await this.shouldDeviceBeBlockedNow(mac);
+                    if (shouldBeBlocked) {
+                        await this.blockDevice(mac);
+                        console.log(`🚫 Device ${mac} re-blocked after bonus time expired`);
+                    } else {
+                        console.log(`✅ Device ${mac} remains unblocked - not scheduled to be blocked`);
+                    }
+                } catch (error) {
+                    console.error(`Error handling bonus time expiration for ${mac}:`, error);
+                }
+            }, bonusMinutes * 60 * 1000);
+
+            // Store timer info
+            this.bonusTimeTimers.set(mac, {
+                timer,
+                endTime,
+                bonusMinutes,
+                startTime: new Date(),
+                originallyBlocked: isCurrentlyBlocked
+            });
+
+            console.log(`⏱️  Bonus time timer set for device ${mac} - expires at ${endTime.toLocaleTimeString()}`);
+            
+            return { 
+                success: true, 
+                message: `Added ${bonusMinutes} minutes of bonus time`,
+                bonusTime: bonusMinutes,
+                endTime: endTime.toISOString(),
+                isActive: true
+            };
+        } catch (error) {
+            console.error('Error adding bonus time:', error);
+            throw error;
+        }
+    }
+
+    // Get remaining bonus time for a device
+    getBonusTimeStatus(mac) {
+        if (!this.bonusTimeTimers.has(mac)) {
+            return { isActive: false, remainingMinutes: 0, endTime: null };
+        }
+
+        const timerInfo = this.bonusTimeTimers.get(mac);
+        const now = new Date();
+        const remainingMs = timerInfo.endTime.getTime() - now.getTime();
+        const remainingMinutes = Math.max(0, Math.ceil(remainingMs / (60 * 1000)));
+
+        return {
+            isActive: remainingMinutes > 0,
+            remainingMinutes,
+            endTime: timerInfo.endTime.toISOString(),
+            totalBonusMinutes: timerInfo.bonusMinutes,
+            startTime: timerInfo.startTime.toISOString()
+        };
+    }
+
+    // Cancel active bonus time for a device
+    async cancelBonusTime(mac) {
+        if (!this.bonusTimeTimers.has(mac)) {
+            return { success: false, message: 'No active bonus time for this device' };
+        }
+
+        const timerInfo = this.bonusTimeTimers.get(mac);
+        clearTimeout(timerInfo.timer);
+        this.bonusTimeTimers.delete(mac);
+
+        // Re-block device if it should be blocked
+        const shouldBeBlocked = await this.shouldDeviceBeBlockedNow(mac);
+        if (shouldBeBlocked) {
+            await this.blockDevice(mac);
+            console.log(`🚫 Device ${mac} re-blocked after bonus time was cancelled`);
+        }
+
+        console.log(`❌ Bonus time cancelled for device ${mac}`);
+        return { success: true, message: 'Bonus time cancelled' };
     }
 
     // Set schedule for device
@@ -136,7 +263,8 @@ class ParentalControlsManager {
                         this.unifiController.getBlockedDevices()
                     ]);
                     
-                    currentDevices = currentDevicesData;
+                    // Convert devices array to Set of MAC addresses for fast lookup
+                    currentDevices = new Set(currentDevicesData.map(device => device.mac.toLowerCase()));
                     console.log(`ParentalControlsManager: Got ${currentDevices.size} current devices from UniFi`);
                     
                     // Convert blocked devices array to Set of MAC addresses
@@ -170,6 +298,8 @@ class ParentalControlsManager {
                 
                 const scheduleData = device.schedule_data ? JSON.parse(device.schedule_data) : null;
                 
+                const bonusTimeStatus = this.getBonusTimeStatus(device.mac);
+                
                 return {
                     ...device,
                     is_blocked: isActuallyBlocked, // Use actual UniFi status
@@ -177,7 +307,8 @@ class ParentalControlsManager {
                     currentIp: device.ip, // Use stored IP since getAllKnownDevices only returns MAC addresses
                     lastSeen: isOnline ? new Date().toISOString() : null,
                     schedule: scheduleData,
-                    shouldBeBlocked: this.shouldDeviceBeBlocked({ ...device, is_blocked: isActuallyBlocked }, scheduleData)
+                    shouldBeBlocked: this.shouldDeviceBeBlocked({ ...device, is_blocked: isActuallyBlocked }, scheduleData),
+                    bonusTime: bonusTimeStatus
                 };
             });
         } catch (error) {
@@ -202,6 +333,72 @@ class ParentalControlsManager {
         }
         
         return device.is_blocked;
+    }
+
+    // Helper method to retry UniFi operations with re-authentication on 401 errors
+    async retryUnifiOperation(operation, operationName, maxRetries = 2) {
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                const result = await operation();
+                return result;
+            } catch (error) {
+                console.log(`${operationName} attempt ${attempt} failed:`, error.message);
+                
+                // If it's a 401 error and we have retries left, try to re-authenticate
+                if (error.message.includes('401') && attempt < maxRetries) {
+                    console.log(`🔄 401 error detected, attempting to re-authenticate (attempt ${attempt}/${maxRetries})`);
+                    try {
+                        // Force a new login by clearing any cached session
+                        await this.unifiController.logout();
+                        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+                        
+                        // The next operation will automatically trigger a new login
+                        continue;
+                    } catch (authError) {
+                        console.error('Re-authentication failed:', authError.message);
+                    }
+                } else if (attempt === maxRetries) {
+                    // Last attempt failed, throw the error
+                    throw error;
+                }
+                
+                // Wait before retry (exponential backoff)
+                await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+            }
+        }
+    }
+
+    // Check if device is currently blocked in UniFi
+    async isDeviceBlocked(mac) {
+        try {
+            if (!this.unifiController.isConfigured()) {
+                return false;
+            }
+            
+            const result = await this.retryUnifiOperation(
+                () => this.unifiController.getBlockedUsers(),
+                `Check if device ${mac} is blocked`
+            );
+            
+            return result.some(user => user.mac === mac.toLowerCase());
+        } catch (error) {
+            console.error(`Error checking if device ${mac} is blocked:`, error);
+            return false;
+        }
+    }
+
+    // Check if device should be blocked right now based on current rules
+    async shouldDeviceBeBlockedNow(mac) {
+        try {
+            const device = await this.db.getManagedDevice(mac);
+            if (!device) return false;
+
+            const scheduleData = device.schedule_data ? JSON.parse(device.schedule_data) : null;
+            return this.shouldDeviceBeBlocked(device, scheduleData);
+        } catch (error) {
+            console.error(`Error checking if device ${mac} should be blocked:`, error);
+            return false;
+        }
     }
 
     // Check if current time falls within blocked schedule
@@ -280,11 +477,18 @@ class ParentalControlsManager {
         }, msUntilMidnight);
     }
 
-    // Cleanup intervals
+    // Cleanup intervals and timers
     destroy() {
         if (this.scheduleCheckInterval) {
             clearInterval(this.scheduleCheckInterval);
         }
+        
+        // Clear all bonus time timers
+        for (const [mac, timerInfo] of this.bonusTimeTimers) {
+            clearTimeout(timerInfo.timer);
+            console.log(`Cleared bonus time timer for device ${mac}`);
+        }
+        this.bonusTimeTimers.clear();
     }
 }
 

@@ -7,6 +7,10 @@
 require('dotenv').config();
 const Unifi = require('node-unifi');
 
+// Global rate limiting to prevent concurrent controllers from hitting API limits
+let globalLastRequestTime = 0;
+const globalRequestDelay = 200; // 200ms between ANY UniFi requests
+
 class UnifiController {
     constructor() {
         this.controller = null;
@@ -14,7 +18,7 @@ class UnifiController {
         this.lastLoginTime = 0;
         this.loginThreshold = 300000; // 5 minutes
         this.lastRequestTime = 0;
-        this.requestDelay = 150; // 150ms between requests to avoid rate limiting
+        this.requestDelay = 200; // Increased to 200ms between requests
         
         // Configuration
         this.host = process.env.UNIFI_HOST || '192.168.0.1';
@@ -27,21 +31,57 @@ class UnifiController {
         console.log(`🚀 WorkingUnifiController initialized for ${this.host}:${this.port}`);
     }
 
+    // Update configuration from environment variables (for settings changes)
+    updateConfiguration() {
+        console.log('🔄 Updating UniFi controller configuration...');
+        
+        this.host = process.env.UNIFI_HOST || '192.168.0.1';
+        this.port = parseInt(process.env.UNIFI_PORT) || 443;
+        this.username = process.env.UNIFI_USERNAME || '';
+        this.password = process.env.UNIFI_PASSWORD || '';
+        this.site = process.env.UNIFI_SITE || 'default';
+        
+        // Reset login state to force re-authentication with new credentials
+        this.isLoggedIn = false;
+        this.lastLoginTime = 0;
+        this.controller = null;
+        
+        console.log(`✅ Configuration updated for ${this.host}:${this.port} (user: ${this.username})`);
+    }
+
     isConfigured() {
         return !!(this.host && this.port && this.username && this.password);
     }
 
     async rateLimit() {
         const now = Date.now();
-        const timeSinceLastRequest = now - this.lastRequestTime;
         
-        if (timeSinceLastRequest < this.requestDelay) {
-            const waitTime = this.requestDelay - timeSinceLastRequest;
+        // Check both instance and global rate limiting
+        const timeSinceLastInstanceRequest = now - this.lastRequestTime;
+        const timeSinceLastGlobalRequest = now - globalLastRequestTime;
+        
+        const instanceWait = Math.max(0, this.requestDelay - timeSinceLastInstanceRequest);
+        const globalWait = Math.max(0, globalRequestDelay - timeSinceLastGlobalRequest);
+        const waitTime = Math.max(instanceWait, globalWait);
+        
+        if (waitTime > 0) {
             console.log(`⏱️  Rate limiting: waiting ${waitTime}ms...`);
             await new Promise(resolve => setTimeout(resolve, waitTime));
         }
         
-        this.lastRequestTime = Date.now();
+        const finalTime = Date.now();
+        this.lastRequestTime = finalTime;
+        globalLastRequestTime = finalTime;
+    }
+
+    async handleRateLimit429() {
+        // Handle 429 Too Many Requests with exponential backoff
+        const backoffDelay = Math.min(5000, this.requestDelay * 4); // Max 5 seconds
+        console.log(`🚫 Rate limit exceeded (429). Backing off for ${backoffDelay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, backoffDelay));
+        const finalTime = Date.now();
+        this.lastRequestTime = finalTime;
+        globalLastRequestTime = finalTime;
     }
 
     async login() {
@@ -75,8 +115,16 @@ class UnifiController {
             }
         } catch (error) {
             this.isLoggedIn = false;
-            console.error('❌ Login error:', error.message);
-            throw error;
+            
+            // Handle 429 rate limit error
+            if (error.message && error.message.includes('429')) {
+                console.error('❌ Login error: Rate limit exceeded');
+                await this.handleRateLimit429();
+                throw new Error('Rate limit exceeded. Please wait a few seconds and try again.');
+            } else {
+                console.error('❌ Login error:', error.message);
+                throw error;
+            }
         }
     }
 
@@ -128,6 +176,16 @@ class UnifiController {
             console.error('❌ Error fetching blocked users:', error.message);
             return [];
         }
+    }
+
+    // Legacy API compatibility - alias for getBlockedUsers
+    async getBlockedDevices() {
+        return await this.getBlockedUsers();
+    }
+
+    // Legacy API compatibility - alias for getAllKnownDevices
+    async getAllClientDevices() {
+        return await this.getAllKnownDevices();
     }
 
     async blockDevice(mac) {
@@ -389,6 +447,35 @@ class UnifiController {
                     canBlock: false,
                     canUnblock: false
                 }
+            };
+        }
+    }
+
+    // Initialize device tracking baseline
+    async initializeDeviceTracking() {
+        console.log('🔄 Initializing device tracking...');
+        try {
+            if (!this.isConfigured()) {
+                console.log('⚠️  UniFi controller not configured, skipping device tracking initialization');
+                return;
+            }
+
+            // Get initial device list to establish baseline
+            const devices = await this.getAllKnownDevices();
+            console.log(`✅ Device tracking initialized - found ${devices.length} devices`);
+            
+            return {
+                success: true,
+                deviceCount: devices.length,
+                message: 'Device tracking initialized successfully'
+            };
+        } catch (error) {
+            console.error('❌ Device tracking initialization failed:', error.message);
+            // Don't throw - let the server continue in configuration mode
+            return {
+                success: false,
+                error: error.message,
+                message: 'Device tracking initialization failed - server will run in configuration mode'
             };
         }
     }

@@ -413,6 +413,47 @@ app.post('/api/parental/devices/:mac/schedule', async (req, res) => {
     }
 });
 
+app.post('/api/parental/devices/:mac/bonus-time', async (req, res) => {
+    try {
+        const { bonusTime } = req.body;
+        if (!bonusTime || bonusTime <= 0) {
+            return res.status(400).json({ error: 'Bonus time must be a positive number' });
+        }
+        
+        const result = await parentalControls.addBonusTime(req.params.mac, bonusTime);
+        logger.info(`Added ${bonusTime} minutes bonus time to device ${req.params.mac}`);
+        res.json(result);
+    } catch (error) {
+        logger.error('Error adding bonus time:', error.message);
+        res.status(500).json({ error: 'Failed to add bonus time' });
+    }
+});
+
+// Get bonus time status for a device
+app.get('/api/parental/devices/:mac/bonus-time', async (req, res) => {
+    try {
+        const status = parentalControls.getBonusTimeStatus(req.params.mac);
+        res.json(status);
+    } catch (error) {
+        logger.error('Error getting bonus time status:', error.message);
+        res.status(500).json({ error: 'Failed to get bonus time status' });
+    }
+});
+
+// Cancel bonus time for a device
+app.delete('/api/parental/devices/:mac/bonus-time', async (req, res) => {
+    try {
+        const result = await parentalControls.cancelBonusTime(req.params.mac);
+        if (result.success) {
+            logger.info(`Cancelled bonus time for device ${req.params.mac}`);
+        }
+        res.json(result);
+    } catch (error) {
+        logger.error('Error cancelling bonus time:', error.message);
+        res.status(500).json({ error: 'Failed to cancel bonus time' });
+    }
+});
+
 app.get('/api/parental/logs/:mac?', async (req, res) => {
     try {
         const logs = await dbManager.getParentalLogs(req.params.mac, parseInt(req.query.limit) || 100);
@@ -577,12 +618,21 @@ app.post('/api/test-settings', async (req, res) => {
         process.env.UNIFI_SITE = decryptedSettings.UNIFI_SITE || 'default';
         
         try {
+            // Wait longer to avoid rate limiting conflicts with main server
+            logger.info('Waiting to avoid rate limiting...');
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
             // Create temporary UniFi controller with test settings
             const testController = new (require('./src/controllers/UnifiController'))();
             testController.updateConfiguration(); // This will read from the temp env vars
             
-            // Test connection
-            await testController.login();
+            // Test connection with additional delay
+            logger.info('Testing connection with new settings...');
+            await new Promise(resolve => setTimeout(resolve, 500)); // Extra delay
+            const testResult = await testController.testConnection();
+            if (!testResult.success) {
+                throw new Error(testResult.error || 'Connection test failed');
+            }
             
             logger.info('Settings test passed');
             res.json({ success: true, message: 'Settings test successful' });
@@ -598,7 +648,8 @@ app.post('/api/test-settings', async (req, res) => {
         }
     } catch (error) {
         logger.warn('Settings test failed:', error.message);
-        res.json({ success: false, error: error.message });
+        logger.error('Settings test error details:', error.stack || error);
+        res.json({ success: false, error: error.message || 'Unknown error during settings test' });
     }
 });
 
@@ -648,6 +699,7 @@ async function initialize() {
         }
     } catch (error) {
         logger.error('Failed to initialize:', error.message);
+        logger.error('Error details:', error.stack || error);
         // Don't exit - allow the app to start for configuration
         logger.info('Starting in configuration mode due to initialization error.');
     }

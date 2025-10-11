@@ -263,6 +263,19 @@ class DatabaseManager {
         }
     }
 
+    async getManagedDevice(mac) {
+        try {
+            const stmt = this.db.prepare(`
+                SELECT * FROM parental_controls 
+                WHERE mac = ? AND is_managed = 1
+            `);
+            return stmt.get(mac);
+        } catch (error) {
+            console.error('Error getting managed device:', error);
+            throw error;
+        }
+    }
+
     async updateDeviceBlockStatus(mac, isBlocked, reason = 'manual', duration = null) {
         try {
             const stmt = this.db.prepare(`
