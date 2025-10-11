@@ -1448,58 +1448,65 @@ footer p {
 }
 
 .available-device-item {
-    padding: 15px;
+    padding: 16px;
     border-bottom: 1px solid var(--border-color);
-    cursor: pointer;
     transition: all 0.2s ease;
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
+    gap: 16px;
 }
 
 .available-device-item:hover {
-    background: rgba(52, 152, 219, 0.1);
+    background: rgba(52, 152, 219, 0.08);
 }
 
 .available-device-item:last-child {
     border-bottom: none;
 }
 
-.available-device-item .device-info {
+.available-device-item .device-content {
     flex: 1;
+    min-width: 0; /* Allows flex item to shrink below content size */
 }
 
 .available-device-item .device-name {
     color: var(--text-primary);
-    font-weight: 600;
-    margin-bottom: 8px;
-    font-size: 1rem;
+    font-weight: 700;
+    font-size: 1.1rem;
+    line-height: 1.3;
+    margin: 0 0 4px 0;
+    word-wrap: break-word;
 }
 
 .available-device-item .secondary-name {
     color: var(--text-secondary);
-    font-weight: 400;
+    font-weight: 500;
     font-size: 0.9rem;
-    margin-left: 5px;
+    margin: 2px 0 12px 0;
+    display: block;
 }
 
 .available-device-item .device-details {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 4px 16px;
+    margin-top: 8px;
 }
 
 .available-device-item .detail-row {
     display: flex;
     align-items: center;
     gap: 8px;
+    min-height: 18px;
 }
 
 .available-device-item .detail-row .label {
     color: var(--text-secondary);
     font-size: 0.85rem;
-    min-width: 70px;
+    min-width: 75px;
     font-weight: 500;
+    flex-shrink: 0;
 }
 
 .available-device-item .detail-row .status,
@@ -1510,6 +1517,7 @@ footer p {
     color: var(--text-primary);
     font-size: 0.85rem;
     font-family: 'Segoe UI', monospace;
+    word-break: break-all;
 }
 
 .available-device-item .detail-row .status i,
@@ -1519,7 +1527,10 @@ footer p {
 
 .available-device-item .device-actions {
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    align-items: flex-end;
+    flex-shrink: 0;
+    margin-top: 2px;
 }
 
 .available-device-info h5 {

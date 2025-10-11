@@ -1676,10 +1676,10 @@ class UniFiSentinel {
                      data-status="${device.is_online ? 'online' : 'offline'}"
                      data-connection="${device.is_wired ? 'wired' : 'wifi'}"
                      data-vendor="${(device.vendor || '').toLowerCase()}">
-                    <div class="device-info">
+                    <div class="device-content">
                         <div class="device-name">
                             ${displayName}
-                            ${secondaryName ? `<span class="secondary-name">(${secondaryName})</span>` : ''}
+                            ${secondaryName ? `<div class="secondary-name">${secondaryName}</div>` : ''}
                         </div>
                         <div class="device-details">
                             <div class="detail-row">
