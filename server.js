@@ -161,13 +161,19 @@ app.get('/api/status', async (req, res) => {
             console.log('[DEBUG] Controller not configured');
             return res.json({ 
                 connected: false, 
-                error: 'UniFi controller not configured. Please check your settings.' 
+                error: 'UniFi controller not configured. Please configure your UniFi settings.',
+                needsConfiguration: true
             });
         }
         
-        // Test connection
+        // Test connection with timeout
         console.log('[DEBUG] Testing UniFi connection...');
-        const connectionResult = await unifiController.testConnection();
+        const connectionPromise = unifiController.testConnection();
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Status check timeout')), 15000);
+        });
+        
+        const connectionResult = await Promise.race([connectionPromise, timeoutPromise]);
         console.log('[DEBUG] Connection result:', connectionResult);
         
         res.json({

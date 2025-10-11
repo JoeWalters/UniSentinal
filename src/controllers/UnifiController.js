@@ -44,8 +44,16 @@ class UnifiController {
         }
 
         return new Promise((resolve, reject) => {
+            // Set timeout to prevent hanging
+            const timeout = setTimeout(() => {
+                console.error('UniFi login timeout after 10 seconds');
+                reject(new Error('Connection timeout - UniFi controller may be unreachable'));
+            }, 10000);
+
             // Art of WiFi library login pattern
             this.controller.login(this.username, this.password, (error) => {
+                clearTimeout(timeout);
+                
                 if (error) {
                     console.error('Failed to login to UniFi controller:', error);
                     this.isLoggedIn = false;
