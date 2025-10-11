@@ -38,7 +38,7 @@ sensitiveFields.forEach(field => {
     }
 });
 
-// Middleware - Helmet 6.x compatible CSP
+// Middleware - Helmet 6.x compatible CSP (allow HTTP for local development)
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
@@ -47,7 +47,8 @@ app.use(helmet({
             scriptSrc: ["'self'", "'unsafe-inline'"],
             imgSrc: ["'self'", "data:", "https:"],
             fontSrc: ["'self'", "https://cdnjs.cloudflare.com"],
-            connectSrc: ["'self'"]
+            connectSrc: ["'self'"],
+            upgradeInsecureRequests: null  // Disable HTTP->HTTPS upgrade for local development
         }
     }
 }));
