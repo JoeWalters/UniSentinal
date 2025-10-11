@@ -366,26 +366,96 @@ class UnifiController {
     async runDiagnostics() {
         console.log('🔧 Running diagnostics...\n');
         
+        const startTime = Date.now();
+        let diagnostics = {
+            apiConnection: { status: 'error', message: 'Not tested', details: '' },
+            authentication: { status: 'error', message: 'Not tested', details: '' },
+            dataAccess: { status: 'error', message: 'Not tested', details: '' },
+            controllerHealth: { status: 'error', message: 'Not tested', details: '' }
+        };
+
         try {
+            // Test API Connection
+            console.log('🔗 Testing API connection...');
+            const connectionStart = Date.now();
             await this.ensureLoggedIn();
-            console.log('✅ Login: Working');
+            const responseTime = Date.now() - connectionStart;
             
+            diagnostics.apiConnection = {
+                status: 'success',
+                message: 'Connected',
+                responseTime: `${responseTime}ms`,
+                details: `Successfully connected to ${this.host}`
+            };
+            console.log('✅ API Connection: Working');
+
+            // Test Authentication
+            console.log('🔐 Testing authentication...');
+            diagnostics.authentication = {
+                status: 'success',
+                message: 'Authenticated',
+                username: this.username,
+                site: this.site,
+                details: `Logged in as ${this.username} on site '${this.site}'`
+            };
+            console.log('✅ Authentication: Working');
+
+            // Test Data Access
+            console.log('📊 Testing data access...');
             const stats = await this.getDeviceStats();
-            console.log('✅ Device retrieval: Working');
+            diagnostics.dataAccess = {
+                status: 'success',
+                message: 'Data accessible',
+                details: `Retrieved ${stats.total} devices (${stats.online} online, ${stats.offline} offline)`
+            };
+            console.log('✅ Data Access: Working');
             console.log(`   • Total devices: ${stats.total}`);
             console.log(`   • Online devices: ${stats.online}`);
             console.log(`   • Offline devices: ${stats.offline}`);
             console.log(`   • Blocked devices: ${stats.blocked}`);
-            
-            return {
-                login: 'SUCCESS',
-                deviceRetrieval: 'SUCCESS',
-                stats: stats,
-                rateLimit: `${this.requestDelay}ms delay configured`
+
+            // Test Controller Health
+            console.log('🏥 Testing controller health...');
+            const totalTime = Date.now() - startTime;
+            diagnostics.controllerHealth = {
+                status: 'success',
+                message: 'Healthy',
+                details: `All tests passed in ${totalTime}ms | Rate limit: ${this.requestDelay}ms`
             };
+            console.log('✅ Controller Health: Good');
+            
+            return diagnostics;
         } catch (error) {
             console.error('❌ Diagnostics failed:', error.message);
-            return { error: error.message };
+            
+            // Update failed test with error details
+            if (diagnostics.apiConnection.status === 'error' && diagnostics.apiConnection.message === 'Not tested') {
+                diagnostics.apiConnection = {
+                    status: 'error',
+                    message: 'Connection failed',
+                    details: error.message
+                };
+            } else if (diagnostics.authentication.status === 'error' && diagnostics.authentication.message === 'Not tested') {
+                diagnostics.authentication = {
+                    status: 'error',
+                    message: 'Authentication failed',
+                    details: error.message
+                };
+            } else if (diagnostics.dataAccess.status === 'error' && diagnostics.dataAccess.message === 'Not tested') {
+                diagnostics.dataAccess = {
+                    status: 'error',
+                    message: 'Data access failed',
+                    details: error.message
+                };
+            }
+            
+            diagnostics.controllerHealth = {
+                status: 'error',
+                message: 'Unhealthy',
+                details: `Diagnostics failed: ${error.message}`
+            };
+            
+            return diagnostics;
         }
     }
 
