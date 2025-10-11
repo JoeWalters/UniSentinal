@@ -63,7 +63,14 @@ app.use('/styles.css', (req, res, next) => {
 });
 
 // Serve static files with debugging and proper headers
-app.use(express.static('public', {
+const publicPath = path.join(__dirname, 'public');
+console.log('Static files directory:', publicPath);
+console.log('Directory exists:', fs.existsSync(publicPath));
+if (fs.existsSync(publicPath)) {
+    console.log('Directory contents:', fs.readdirSync(publicPath));
+}
+
+app.use(express.static(publicPath, {
     setHeaders: (res, filePath) => {
         console.log('Serving static file:', filePath);
         if (filePath.endsWith('.css')) {
@@ -80,6 +87,22 @@ const parentalControls = new ParentalControlsManager(unifiController, dbManager)
 // Routes
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Explicit static file routes as fallback
+app.get('/app.js', (req, res) => {
+    const filePath = path.join(__dirname, 'public', 'app.js');
+    console.log('Serving app.js from:', filePath);
+    console.log('File exists:', fs.existsSync(filePath));
+    res.sendFile(filePath);
+});
+
+app.get('/styles.css', (req, res) => {
+    const filePath = path.join(__dirname, 'public', 'styles.css');
+    console.log('Serving styles.css from:', filePath);
+    console.log('File exists:', fs.existsSync(filePath));
+    res.setHeader('Content-Type', 'text/css');
+    res.sendFile(filePath);
 });
 
 // CSS Test route for debugging
