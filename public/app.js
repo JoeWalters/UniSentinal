@@ -21,7 +21,7 @@ class UniFiSentinel {
         // Button events
         document.getElementById('scanBtn').addEventListener('click', () => this.manualScan());
         document.getElementById('refreshBtn').addEventListener('click', () => this.loadDevices());
-        // Removed acknowledgeAll button
+        document.getElementById('acknowledgeAllBtn').addEventListener('click', () => this.acknowledgeAllDevices());
         document.getElementById('testConnectionBtn').addEventListener('click', () => this.runDiagnostics());
         document.getElementById('darkModeToggle').addEventListener('click', () => this.toggleDarkMode());
         document.getElementById('settingsBtn').addEventListener('click', () => this.showSettingsModal());
@@ -188,7 +188,40 @@ class UniFiSentinel {
         }
     }
 
-    // Removed acknowledgeAll function - focusing on individual device review
+    async acknowledgeAllDevices() {
+        try {
+            // Show confirmation dialog
+            if (!confirm('Are you sure you want to acknowledge all new devices? This will mark all currently displayed devices as known.')) {
+                return;
+            }
+
+            const acknowledgeAllBtn = document.getElementById('acknowledgeAllBtn');
+            const originalText = acknowledgeAllBtn.innerHTML;
+            
+            // Update button to show loading state
+            acknowledgeAllBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Acknowledging...';
+            acknowledgeAllBtn.disabled = true;
+
+            const response = await fetch('/api/devices/acknowledge-all', {
+                method: 'POST'
+            });
+            
+            if (!response.ok) throw new Error('Failed to acknowledge all devices');
+            const result = await response.json();
+            
+            this.showNotification(`Successfully acknowledged ${result.count} device(s)`, 'success');
+            await this.loadDevices(); // Refresh the device list
+            
+        } catch (error) {
+            console.error('Error acknowledging all devices:', error);
+            this.showError('Failed to acknowledge all devices');
+        } finally {
+            // Restore button state
+            const acknowledgeAllBtn = document.getElementById('acknowledgeAllBtn');
+            acknowledgeAllBtn.innerHTML = '<i class="fas fa-check-double"></i> Acknowledge All';
+            acknowledgeAllBtn.disabled = false;
+        }
+    }
 
     async checkStatus() {
         try {
@@ -248,6 +281,14 @@ class UniFiSentinel {
         const deviceCount = document.getElementById('deviceCount');
 
         deviceCount.textContent = this.devices.length;
+
+        // Show/hide acknowledge all button based on device count
+        const acknowledgeAllBtn = document.getElementById('acknowledgeAllBtn');
+        if (this.devices.length > 0) {
+            acknowledgeAllBtn.style.display = 'inline-block';
+        } else {
+            acknowledgeAllBtn.style.display = 'none';
+        }
 
         if (this.devices.length === 0) {
             grid.style.display = 'none';

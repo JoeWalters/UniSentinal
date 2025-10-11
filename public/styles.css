@@ -190,6 +190,10 @@ header {
     flex-wrap: wrap;
 }
 
+#acknowledgeAllBtn {
+    display: none; /* Hidden by default, shown when there are devices to acknowledge */
+}
+
 .btn {
     padding: 12px 24px;
     border: none;

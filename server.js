@@ -139,6 +139,24 @@ app.post('/api/devices/:mac/acknowledge', async (req, res) => {
     }
 });
 
+app.post('/api/devices/acknowledge-all', async (req, res) => {
+    try {
+        const unacknowledgedDevices = await dbManager.getUnacknowledgedDevices();
+        let acknowledgedCount = 0;
+        
+        for (const device of unacknowledgedDevices) {
+            await dbManager.acknowledgeDevice(device.mac);
+            acknowledgedCount++;
+        }
+        
+        logger.info(`All devices acknowledged: ${acknowledgedCount} devices`);
+        res.json({ success: true, message: 'All devices acknowledged', count: acknowledgedCount });
+    } catch (error) {
+        logger.error('Error acknowledging all devices:', error.message);
+        res.status(500).json({ error: 'Failed to acknowledge all devices' });
+    }
+});
+
 app.get('/api/scan', async (req, res) => {
     try {
         const newDevices = await unifiController.scanForNewDevices();
