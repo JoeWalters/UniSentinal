@@ -1582,19 +1582,21 @@ class UniFiSentinel {
         const connectionFilter = document.getElementById('connectionFilter').value;
         const vendorFilter = document.getElementById('vendorFilter').value;
         
-        console.log(`🔧 Frontend: Applying filters - connection: ${connectionFilter}, status: ${statusFilter}`);
+        console.log(`🔧 Frontend: Applying filters - connection: ${connectionFilter}, status: ${statusFilter}, search: "${searchTerm}"`);
 
         let filtered = this.allAvailableDevices.filter(device => {
-            // Text search
-            const displayName = (device.user_alias || device.hostname || '').toLowerCase();
+            // Text search across multiple fields
+            const deviceName = (device.name || '').toLowerCase();
             const hostname = (device.hostname || '').toLowerCase();
+            const userAlias = (device.user_alias || '').toLowerCase();
             const mac = device.mac.toLowerCase();
             const vendor = (device.vendor || '').toLowerCase();
             const ip = (device.ip || '').toLowerCase();
             
             const matchesSearch = !searchTerm || 
-                displayName.includes(searchTerm) ||
+                deviceName.includes(searchTerm) ||
                 hostname.includes(searchTerm) ||
+                userAlias.includes(searchTerm) ||
                 mac.includes(searchTerm) ||
                 vendor.includes(searchTerm) ||
                 ip.includes(searchTerm);

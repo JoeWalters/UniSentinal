@@ -143,15 +143,47 @@ class UnifiController {
             await this.rateLimit();
             
             console.log('📱 Fetching client devices...');
-            const clients = await this.controller.getClientDevices();
             
-            if (clients) {
-                console.log(`✅ Found ${clients.length} client devices`);
-                return clients;
-            } else {
-                console.log('⚠️  No client devices found');
-                return [];
+            // Get active/online clients
+            const activeClients = await this.controller.getClientDevices();
+            console.log(`📱 Found ${activeClients ? activeClients.length : 0} active clients`);
+            
+            // Wait before next API call
+            await this.rateLimit();
+            
+            // Get all known users (includes offline devices)
+            console.log('👥 Fetching all known users...');
+            const allUsers = await this.controller.getAllUsers();
+            console.log(`👥 Found ${allUsers ? allUsers.length : 0} total known users`);
+            
+            // Combine and deduplicate by MAC address
+            const allClients = [];
+            const seenMacs = new Set();
+            
+            // Add active clients first (they have more current data)
+            if (activeClients) {
+                for (const client of activeClients) {
+                    if (client.mac && !seenMacs.has(client.mac)) {
+                        seenMacs.add(client.mac);
+                        allClients.push(client);
+                    }
+                }
             }
+            
+            // Add offline users that weren't in active clients
+            if (allUsers) {
+                for (const user of allUsers) {
+                    if (user.mac && !seenMacs.has(user.mac)) {
+                        seenMacs.add(user.mac);
+                        // Mark as offline since it wasn't in active clients
+                        user.is_offline = true;
+                        allClients.push(user);
+                    }
+                }
+            }
+            
+            console.log(`✅ Found ${allClients.length} total devices (active + offline)`);
+            return allClients;
         } catch (error) {
             console.error('❌ Error fetching clients:', error.message);
             throw error;
@@ -405,7 +437,10 @@ class UnifiController {
                 is_wired: client.is_wired || false
             }));
             
-            console.log(`📱 Found ${newDevices.length} devices (${newDevices.filter(d => d.is_online).length} online, ${newDevices.filter(d => d.is_wired).length} wired)`);
+            const onlineCount = newDevices.filter(d => d.is_online).length;
+            const offlineCount = newDevices.filter(d => !d.is_online).length;
+            const wiredCount = newDevices.filter(d => d.is_wired).length;
+            console.log(`📱 Found ${newDevices.length} devices (${onlineCount} online, ${offlineCount} offline, ${wiredCount} wired)`);
             return newDevices;
         } catch (error) {
             console.error('❌ Device scan failed:', error.message);
@@ -509,25 +544,32 @@ class UnifiController {
 
     // Helper method to determine if device is online
     isDeviceOnline(client) {
-        // Check if device is wired and connected
-        if (client.is_wired) {
+        // If we explicitly marked it as offline (from getAllUsers), it's offline
+        if (client.is_offline) {
+            return false;
+        }
+        
+        // Check for active network connection indicators
+        const hasActiveConnection = client.is_wired || client.is_wireless;
+        if (hasActiveConnection) {
             return true;
         }
         
-        // For wireless devices, check last seen time
+        // Check last seen time for devices that might be recently offline
         if (client.last_seen) {
             const lastSeenTime = new Date(client.last_seen * 1000); // Convert from Unix timestamp
             const now = new Date();
             const timeDiff = now - lastSeenTime;
-            // Consider online if seen within last 5 minutes
-            return timeDiff < (5 * 60 * 1000);
+            // Consider online if seen within last 2 minutes (shorter window for accuracy)
+            return timeDiff < (2 * 60 * 1000);
         }
         
-        // Check if device has active network connection
-        if (client.network || client.ip) {
+        // If device has current IP but no connection flags, it might be online
+        if (client.ip && !client.is_offline) {
             return true;
         }
         
+        // Default to offline for safety
         return false;
     }
 
