@@ -71,3 +71,10 @@ Thumbs.db
 
 # Windows specific
 Desktop.ini
+
+# Test and diagnostic files (may contain sensitive data)
+diagnose-permissions.js
+quick-login-test.js
+explore-unifi-api.js
+test-integration.js
+test-*.js
