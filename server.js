@@ -154,11 +154,35 @@ app.get('/api/scan', async (req, res) => {
 
 app.get('/api/status', async (req, res) => {
     try {
-        const status = await unifiController.getControllerStatus();
-        res.json(status);
+        console.log('[DEBUG] /api/status endpoint called');
+        
+        // Check if controller is configured
+        if (!unifiController.isConfigured()) {
+            console.log('[DEBUG] Controller not configured');
+            return res.json({ 
+                connected: false, 
+                error: 'UniFi controller not configured. Please check your settings.' 
+            });
+        }
+        
+        // Test connection
+        console.log('[DEBUG] Testing UniFi connection...');
+        const connectionResult = await unifiController.testConnection();
+        console.log('[DEBUG] Connection result:', connectionResult);
+        
+        res.json({
+            connected: connectionResult.success || false,
+            error: connectionResult.success ? null : (connectionResult.error || 'Connection failed')
+        });
+        
     } catch (error) {
+        console.error('[ERROR] /api/status error:', error.message);
+        console.error('[ERROR] Stack trace:', error.stack);
         logger.error('Error getting controller status:', error.message);
-        res.status(500).json({ error: 'Failed to get controller status' });
+        res.json({ 
+            connected: false, 
+            error: `Connection test failed: ${error.message}` 
+        });
     }
 });
 
