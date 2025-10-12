@@ -326,33 +326,49 @@ header {
     margin-bottom: 15px;
 }
 
+.device-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.device-type-icon {
+    color: var(--accent-primary);
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
 .device-info h3 {
     color: var(--text-primary);
     font-size: 1.1rem;
-    margin-bottom: 8px;
+    margin: 0;
+    flex: 1;
 }
 
-.device-meta {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 10px;
+.device-type-label {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
 }
 
 .device-info .mac-address {
     color: var(--text-secondary);
     font-family: 'Courier New', monospace;
     font-size: 0.9rem;
-    flex: 1;
+    margin-bottom: 8px;
 }
 
 .connection-type {
+    display: inline-block;
     padding: 4px 8px;
     border-radius: 6px;
     font-size: 0.75rem;
     font-weight: 500;
     white-space: nowrap;
-    flex-shrink: 0;
 }
 
 .connection-type.wired {
