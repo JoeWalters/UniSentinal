@@ -318,7 +318,6 @@ class UniFiSentinel {
     }
 
     createDeviceCard(device) {
-        const detectedTime = new Date(device.detected_at).toLocaleString();
         const connectionType = device.is_wired ? 'wired' : 'wireless';
         const connectionIcon = device.is_wired ? 'fas fa-ethernet' : 'fas fa-wifi';
 
@@ -327,10 +326,12 @@ class UniFiSentinel {
                 <div class="device-header">
                     <div class="device-info">
                         <h3>${device.hostname || 'Unknown Device'}</h3>
-                        <div class="mac-address">${device.mac}</div>
-                    </div>
-                    <div class="connection-type ${connectionType}">
-                        <i class="${connectionIcon}"></i> ${connectionType.toUpperCase()}
+                        <div class="device-meta">
+                            <span class="mac-address">${device.mac}</span>
+                            <span class="connection-type ${connectionType}">
+                                <i class="${connectionIcon}"></i> ${connectionType.toUpperCase()}
+                            </span>
+                        </div>
                     </div>
                 </div>
                 
@@ -342,14 +343,6 @@ class UniFiSentinel {
                     <div class="detail-item">
                         <span class="detail-label">Vendor</span>
                         <span class="detail-value">${device.vendor || 'Unknown'}</span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">First Seen</span>
-                        <span class="detail-value">${new Date(device.first_seen).toLocaleString()}</span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Detected</span>
-                        <span class="detail-value">${detectedTime}</span>
                     </div>
                 </div>
 

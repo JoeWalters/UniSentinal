@@ -323,29 +323,36 @@ header {
 }
 
 .device-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
     margin-bottom: 15px;
 }
 
 .device-info h3 {
     color: var(--text-primary);
     font-size: 1.1rem;
-    margin-bottom: 5px;
+    margin-bottom: 8px;
+}
+
+.device-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
 }
 
 .device-info .mac-address {
     color: var(--text-secondary);
     font-family: 'Courier New', monospace;
     font-size: 0.9rem;
+    flex: 1;
 }
 
 .connection-type {
     padding: 4px 8px;
     border-radius: 6px;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     font-weight: 500;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .connection-type.wired {
@@ -358,10 +365,21 @@ header {
     color: #0c5460;
 }
 
+/* Dark mode adjustments for connection types */
+[data-theme="dark"] .connection-type.wired {
+    background: rgba(40, 167, 69, 0.2);
+    color: #40c463;
+}
+
+[data-theme="dark"] .connection-type.wireless {
+    background: rgba(23, 162, 184, 0.2);
+    color: #1dd1ff;
+}
+
 .device-details {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 10px;
+    gap: 12px;
     margin-bottom: 15px;
 }
 
