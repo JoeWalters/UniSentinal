@@ -11,6 +11,7 @@ class UniFiSentinel {
         this.bindEvents();
         this.setupScheduleEventListeners(); // Setup schedule management event listeners
         this.initializeDarkMode(); // Initialize dark mode before loading content
+        this.setupButtonAnimations(); // Setup button click animations
         this.loadDevices();
         this.checkStatus();
         this.loadVersion();
@@ -1251,6 +1252,31 @@ class UniFiSentinel {
         `).join('');
 
         logsContent.innerHTML = logEntries;
+    }
+
+    setupButtonAnimations() {
+        // Add click animation to all buttons
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('btn') || e.target.closest('.btn')) {
+                const btn = e.target.classList.contains('btn') ? e.target : e.target.closest('.btn');
+                
+                // Create ripple effect
+                const ripple = document.createElement('span');
+                ripple.className = 'btn-ripple';
+                btn.appendChild(ripple);
+                
+                const rect = btn.getBoundingClientRect();
+                const size = Math.max(rect.width, rect.height);
+                const x = e.clientX - rect.left - size / 2;
+                const y = e.clientY - rect.top - size / 2;
+                
+                ripple.style.width = ripple.style.height = size + 'px';
+                ripple.style.left = x + 'px';
+                ripple.style.top = y + 'px';
+                
+                setTimeout(() => ripple.remove(), 600);
+            }
+        });
     }
 
     // Tab switching functionality
