@@ -317,166 +317,31 @@ class UniFiSentinel {
         });
     }
 
-    getDeviceTypeInfo(device) {
-        const vendor = (device.vendor || '').toLowerCase();
-        const hostname = (device.hostname || '').toLowerCase();
-        
-        // Device type detection based on vendor and hostname patterns
-        const deviceTypes = {
-            // Mobile devices
-            apple: {
-                patterns: ['iphone', 'ipad', 'apple', 'ios'],
-                icon: 'fas fa-mobile-alt',
-                type: 'Mobile Device',
-                defaultName: 'Apple Device'
-            },
-            samsung: {
-                patterns: ['samsung', 'galaxy'],
-                icon: 'fas fa-mobile-alt',
-                type: 'Mobile Device',
-                defaultName: 'Samsung Device'
-            },
-            google: {
-                patterns: ['google', 'pixel', 'nest'],
-                icon: 'fas fa-mobile-alt',
-                type: 'Smart Device',
-                defaultName: 'Google Device'
-            },
-            
-            // Computers
-            dell: {
-                patterns: ['dell', 'laptop', 'desktop'],
-                icon: 'fas fa-laptop',
-                type: 'Computer',
-                defaultName: 'Dell Computer'
-            },
-            hp: {
-                patterns: ['hp', 'hewlett'],
-                icon: 'fas fa-laptop',
-                type: 'Computer',
-                defaultName: 'HP Computer'
-            },
-            lenovo: {
-                patterns: ['lenovo', 'thinkpad'],
-                icon: 'fas fa-laptop',
-                type: 'Computer',
-                defaultName: 'Lenovo Computer'
-            },
-            microsoft: {
-                patterns: ['microsoft', 'surface'],
-                icon: 'fas fa-laptop',
-                type: 'Computer',
-                defaultName: 'Microsoft Device'
-            },
-            
-            // Networking
-            cisco: {
-                patterns: ['cisco'],
-                icon: 'fas fa-network-wired',
-                type: 'Network Device',
-                defaultName: 'Cisco Device'
-            },
-            netgear: {
-                patterns: ['netgear'],
-                icon: 'fas fa-wifi',
-                type: 'Network Device',
-                defaultName: 'Netgear Device'
-            },
-            linksys: {
-                patterns: ['linksys'],
-                icon: 'fas fa-wifi',
-                type: 'Network Device',
-                defaultName: 'Linksys Device'
-            },
-            
-            // IoT and Smart Home
-            amazon: {
-                patterns: ['amazon', 'echo', 'alexa'],
-                icon: 'fas fa-home',
-                type: 'Smart Home',
-                defaultName: 'Amazon Device'
-            },
-            philips: {
-                patterns: ['philips', 'hue'],
-                icon: 'fas fa-lightbulb',
-                type: 'Smart Home',
-                defaultName: 'Philips Device'
-            },
-            nest: {
-                patterns: ['nest', 'thermostat'],
-                icon: 'fas fa-thermometer-half',
-                type: 'Smart Home',
-                defaultName: 'Nest Device'
-            },
-            
-            // Gaming
-            sony: {
-                patterns: ['sony', 'playstation', 'ps4', 'ps5'],
-                icon: 'fas fa-gamepad',
-                type: 'Gaming Console',
-                defaultName: 'Sony Device'
-            },
-            nintendo: {
-                patterns: ['nintendo', 'switch'],
-                icon: 'fas fa-gamepad',
-                type: 'Gaming Console',
-                defaultName: 'Nintendo Device'
-            },
-            microsoft_xbox: {
-                patterns: ['xbox'],
-                icon: 'fas fa-gamepad',
-                type: 'Gaming Console',
-                defaultName: 'Xbox Console'
-            }
-        };
-
-        // Check vendor and hostname for matches
-        for (const [key, info] of Object.entries(deviceTypes)) {
-            if (info.patterns.some(pattern => 
-                vendor.includes(pattern) || hostname.includes(pattern)
-            )) {
-                return {
-                    icon: info.icon,
-                    type: info.type,
-                    displayName: device.hostname || info.defaultName
-                };
-            }
+    getDeviceDisplayName(device) {
+        // Priority order: hostname, name/alias, IP, or "Unk"
+        if (device.hostname && device.hostname.trim()) {
+            return device.hostname.trim();
         }
-
-        // Generic fallbacks based on connection type
-        if (device.is_wired) {
-            return {
-                icon: 'fas fa-desktop',
-                type: 'Wired Device',
-                displayName: device.hostname || (device.vendor ? `${device.vendor} Device` : 'Wired Device')
-            };
-        } else {
-            return {
-                icon: 'fas fa-wifi',
-                type: 'Wireless Device',
-                displayName: device.hostname || (device.vendor ? `${device.vendor} Device` : 'Wireless Device')
-            };
+        if (device.name && device.name.trim()) {
+            return device.name.trim();
         }
+        if (device.alias && device.alias.trim()) {
+            return device.alias.trim();
+        }
+        if (device.ip && device.ip.trim()) {
+            return device.ip.trim();
+        }
+        return 'Unk';
     }
 
     createDeviceCard(device) {
-        const connectionType = device.is_wired ? 'wired' : 'wireless';
-        const connectionIcon = device.is_wired ? 'fas fa-ethernet' : 'fas fa-wifi';
-        const deviceInfo = this.getDeviceTypeInfo(device);
+        const displayName = this.getDeviceDisplayName(device);
 
         return `
             <div class="device-card" data-mac="${device.mac}">
                 <div class="device-header">
                     <div class="device-info">
-                        <div class="device-title">
-                            <i class="${deviceInfo.icon} device-type-icon"></i>
-                            <h3>${deviceInfo.displayName}</h3>
-                        </div>
-                        <div class="device-type-label">${deviceInfo.type}</div>
-                        <div class="mac-address">${device.mac}</div>
-                        <div class="connection-type ${connectionType}">
-                            <i class="${connectionIcon}"></i> ${connectionType.toUpperCase()}
-                        </div>
+                        <h3>${displayName}</h3>
                     </div>
                 </div>
                 
