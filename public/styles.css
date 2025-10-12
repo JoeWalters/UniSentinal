@@ -296,12 +296,74 @@ header {
     margin-bottom: 30px;
 }
 
+.devices-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
 .devices-section h2 {
     color: var(--text-primary);
-    margin-bottom: 20px;
+    margin: 0;
     display: flex;
     align-items: center;
     gap: 10px;
+}
+
+.color-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-size: 0.8rem;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.legend-color {
+    width: 16px;
+    height: 3px;
+    border-radius: 2px;
+}
+
+.legend-color.device-apple {
+    background: linear-gradient(90deg, #007AFF, #34C759);
+}
+
+.legend-color.device-mobile {
+    background: linear-gradient(90deg, #1976D2, #42A5F5);
+}
+
+.legend-color.device-google {
+    background: linear-gradient(90deg, #4285F4, #34A853);
+}
+
+.legend-color.device-iot {
+    background: linear-gradient(90deg, #FF9800, #FFC107);
+}
+
+.legend-color.device-gaming {
+    background: linear-gradient(90deg, #9C27B0, #E91E63);
+}
+
+.legend-color.device-network {
+    background: linear-gradient(90deg, #607D8B, #78909C);
+}
+
+.legend-color.device-wired {
+    background: linear-gradient(90deg, #4CAF50, #8BC34A);
+}
+
+.legend-color.device-wireless {
+    background: linear-gradient(90deg, #2196F3, #03A9F4);
 }
 
 .count-badge {
@@ -368,6 +430,9 @@ header {
     opacity: 0;
     transform: translateY(20px);
     animation: cardFadeIn 0.5s ease-out forwards;
+    display: flex;
+    flex-direction: column;
+    min-height: 200px;
 }
 
 .device-card:hover {
@@ -419,6 +484,71 @@ header {
     background: linear-gradient(90deg, var(--accent-primary), var(--accent-success));
 }
 
+/* Color-coded device cards */
+.device-card.device-apple::before {
+    background: linear-gradient(90deg, #007AFF, #34C759);
+}
+
+.device-card.device-apple:hover {
+    border-color: #007AFF;
+}
+
+.device-card.device-mobile::before {
+    background: linear-gradient(90deg, #1976D2, #42A5F5);
+}
+
+.device-card.device-mobile:hover {
+    border-color: #1976D2;
+}
+
+.device-card.device-google::before {
+    background: linear-gradient(90deg, #4285F4, #34A853);
+}
+
+.device-card.device-google:hover {
+    border-color: #4285F4;
+}
+
+.device-card.device-iot::before {
+    background: linear-gradient(90deg, #FF9800, #FFC107);
+}
+
+.device-card.device-iot:hover {
+    border-color: #FF9800;
+}
+
+.device-card.device-gaming::before {
+    background: linear-gradient(90deg, #9C27B0, #E91E63);
+}
+
+.device-card.device-gaming:hover {
+    border-color: #9C27B0;
+}
+
+.device-card.device-network::before {
+    background: linear-gradient(90deg, #607D8B, #78909C);
+}
+
+.device-card.device-network:hover {
+    border-color: #607D8B;
+}
+
+.device-card.device-wired::before {
+    background: linear-gradient(90deg, #4CAF50, #8BC34A);
+}
+
+.device-card.device-wired:hover {
+    border-color: #4CAF50;
+}
+
+.device-card.device-wireless::before {
+    background: linear-gradient(90deg, #2196F3, #03A9F4);
+}
+
+.device-card.device-wireless:hover {
+    border-color: #2196F3;
+}
+
 .device-header {
     margin-bottom: 15px;
 }
@@ -468,7 +598,7 @@ header {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 12px;
-    margin-bottom: 15px;
+    flex: 1;
 }
 
 .detail-item {
@@ -492,7 +622,8 @@ header {
 .device-actions {
     display: flex;
     gap: 10px;
-    margin-top: 15px;
+    margin-top: auto;
+    padding-top: 15px;
 }
 
 .btn-small {
@@ -869,6 +1000,17 @@ footer p {
     .devices-grid {
         grid-template-columns: 1fr;
         gap: 16px;
+    }
+    
+    .devices-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+    
+    .color-legend {
+        gap: 8px;
+        font-size: 0.75rem;
     }
     
     .device-card {

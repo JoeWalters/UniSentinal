@@ -335,11 +335,36 @@ class UniFiSentinel {
         return 'Unk';
     }
 
+    getDeviceColorClass(device) {
+        const vendor = (device.vendor || '').toLowerCase();
+        const hostname = (device.hostname || '').toLowerCase();
+        
+        // Color coding based on device type/vendor
+        if (vendor.includes('apple') || hostname.includes('iphone') || hostname.includes('ipad') || hostname.includes('mac')) {
+            return 'device-apple';
+        } else if (vendor.includes('samsung') || hostname.includes('galaxy') || hostname.includes('samsung')) {
+            return 'device-mobile';
+        } else if (vendor.includes('google') || vendor.includes('nest') || hostname.includes('google')) {
+            return 'device-google';
+        } else if (vendor.includes('amazon') || hostname.includes('echo') || hostname.includes('alexa')) {
+            return 'device-iot';
+        } else if (vendor.includes('sony') || vendor.includes('nintendo') || hostname.includes('playstation') || hostname.includes('xbox')) {
+            return 'device-gaming';
+        } else if (vendor.includes('cisco') || vendor.includes('netgear') || vendor.includes('linksys') || vendor.includes('ubiquiti')) {
+            return 'device-network';
+        } else if (device.is_wired) {
+            return 'device-wired';
+        } else {
+            return 'device-wireless';
+        }
+    }
+
     createDeviceCard(device) {
         const displayName = this.getDeviceDisplayName(device);
+        const colorClass = this.getDeviceColorClass(device);
 
         return `
-            <div class="device-card" data-mac="${device.mac}">
+            <div class="device-card ${colorClass}" data-mac="${device.mac}">
                 <div class="device-header">
                     <div class="device-info">
                         <h3>${displayName}</h3>
