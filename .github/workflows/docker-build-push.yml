@@ -2,7 +2,7 @@ name: Build and Push Docker Image
 
 on:
   push:
-    branches: [ main ]
+    branches: [ "*" ]
   pull_request:
     branches: [ main ]
 
@@ -71,14 +71,16 @@ jobs:
         }
         EOF
 
-    - name: Extract metadata
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}
-        tags: |
-          type=raw,value=latest,enable={{is_default_branch}}
-          type=raw,value=${{ steps.version.outputs.VERSION }},enable={{is_default_branch}}
+    - name: Set Docker tags
+      id: tags
+      run: |
+        REPO="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}"
+        VERSION="${{ steps.version.outputs.VERSION }}"
+        if [ "${{ github.ref_name }}" = "main" ]; then
+          echo "TAGS=${REPO}:latest,${REPO}:${VERSION}" >> $GITHUB_OUTPUT
+        else
+          echo "TAGS=${REPO}:dev-latest,${REPO}:${VERSION}" >> $GITHUB_OUTPUT
+        fi
 
     - name: Build and push Docker image
       uses: docker/build-push-action@v5
@@ -87,8 +89,7 @@ jobs:
         context: .
         platforms: linux/amd64,linux/arm64
         push: ${{ github.event_name != 'pull_request' }}
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
+        tags: ${{ steps.tags.outputs.TAGS }}
         build-args: |
           BUILD_DATE=${{ steps.version.outputs.build_date }}
           VERSION=${{ steps.version.outputs.full_version }}
