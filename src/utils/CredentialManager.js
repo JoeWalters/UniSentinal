@@ -102,7 +102,7 @@ class CredentialManager {
         } catch (error) {
             console.error('[SECURITY] Decryption error:', error.message);
             console.warn('[SECURITY] Failed to decrypt credential - may be corrupted or using old key');
-            return encryptedData; // Return encrypted data rather than failing completely
+            return null; // Return null rather than leaking ciphertext
         }
     }
 

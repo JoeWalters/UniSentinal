@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const path = require('path');
 const fs = require('fs');
 
@@ -34,7 +35,13 @@ const sensitiveFields = ['UNIFI_PASSWORD'];
 sensitiveFields.forEach(field => {
     if (process.env[field] && credentialManager.isEncrypted(process.env[field])) {
         console.log(`[SECURITY] Decrypting environment variable: ${field}`);
-        process.env[field] = credentialManager.decrypt(process.env[field]);
+        const decrypted = credentialManager.decrypt(process.env[field]);
+        if (decrypted !== null) {
+            process.env[field] = decrypted;
+        } else {
+            console.error(`[SECURITY] Failed to decrypt ${field} - credential may be corrupted`);
+            delete process.env[field];
+        }
     }
 });
 
@@ -44,7 +51,7 @@ app.use(helmet({
         directives: {
             defaultSrc: ["'self'"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com"],
-            scriptSrc: ["'self'", "'unsafe-inline'"],
+            scriptSrc: ["'self'"],
             imgSrc: ["'self'", "data:", "https:"],
             fontSrc: ["'self'", "https://cdnjs.cloudflare.com"],
             connectSrc: ["'self'"],
@@ -54,6 +61,35 @@ app.use(helmet({
 }));
 app.use(cors());
 app.use(express.json());
+
+// MAC address validation middleware for routes with :mac param
+const MAC_RE = /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i;
+function validateMac(req, res, next) {
+    const mac = req.params.mac;
+    if (mac !== undefined && !MAC_RE.test(mac)) {
+        return res.status(400).json({ error: 'Invalid MAC address format' });
+    }
+    next();
+}
+
+// Rate limiting
+const apiLimiter = rateLimit({
+    windowMs: 60 * 1000,   // 1 minute
+    max: 120,              // 120 requests per minute per IP
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please try again later.' }
+});
+
+const mutationLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please try again later.' }
+});
+
+app.use('/api/', apiLimiter);
 
 // Debug: Log static file requests
 app.use('/styles.css', (req, res, next) => {
@@ -127,7 +163,7 @@ app.get('/api/devices', async (req, res) => {
     }
 });
 
-app.post('/api/devices/:mac/acknowledge', async (req, res) => {
+app.post('/api/devices/:mac/acknowledge', validateMac, async (req, res) => {
     try {
         const { mac } = req.params;
         await dbManager.acknowledgeDevice(mac);
@@ -390,7 +426,7 @@ app.post('/api/parental/devices/add', async (req, res) => {
     }
 });
 
-app.delete('/api/parental/devices/:mac', async (req, res) => {
+app.delete('/api/parental/devices/:mac', validateMac, async (req, res) => {
     try {
         const result = await parentalControls.removeDeviceFromParentalControls(req.params.mac);
         res.json(result);
@@ -400,7 +436,7 @@ app.delete('/api/parental/devices/:mac', async (req, res) => {
     }
 });
 
-app.post('/api/parental/devices/:mac/block', async (req, res) => {
+app.post('/api/parental/devices/:mac/block', validateMac, mutationLimiter, async (req, res) => {
     try {
         const { duration, reason } = req.body;
         const result = await parentalControls.blockDevice(req.params.mac, reason || 'manual', duration);
@@ -411,7 +447,7 @@ app.post('/api/parental/devices/:mac/block', async (req, res) => {
     }
 });
 
-app.post('/api/parental/devices/:mac/unblock', async (req, res) => {
+app.post('/api/parental/devices/:mac/unblock', validateMac, mutationLimiter, async (req, res) => {
     try {
         const { reason } = req.body;
         const result = await parentalControls.unblockDevice(req.params.mac, reason || 'manual');
@@ -424,7 +460,7 @@ app.post('/api/parental/devices/:mac/unblock', async (req, res) => {
 
 // Removed time limit endpoint - not realistic to enforce connection time vs actual usage
 
-app.post('/api/parental/devices/:mac/schedule', async (req, res) => {
+app.post('/api/parental/devices/:mac/schedule', validateMac, async (req, res) => {
     try {
         const result = await parentalControls.setSchedule(req.params.mac, req.body);
         res.json(result);
@@ -434,7 +470,7 @@ app.post('/api/parental/devices/:mac/schedule', async (req, res) => {
     }
 });
 
-app.post('/api/parental/devices/:mac/bonus-time', async (req, res) => {
+app.post('/api/parental/devices/:mac/bonus-time', validateMac, async (req, res) => {
     try {
         const { bonusTime } = req.body;
         if (!bonusTime || bonusTime <= 0) {
@@ -451,7 +487,7 @@ app.post('/api/parental/devices/:mac/bonus-time', async (req, res) => {
 });
 
 // Get bonus time status for a device
-app.get('/api/parental/devices/:mac/bonus-time', async (req, res) => {
+app.get('/api/parental/devices/:mac/bonus-time', validateMac, async (req, res) => {
     try {
         const status = parentalControls.getBonusTimeStatus(req.params.mac);
         res.json(status);
@@ -462,7 +498,7 @@ app.get('/api/parental/devices/:mac/bonus-time', async (req, res) => {
 });
 
 // Cancel bonus time for a device
-app.delete('/api/parental/devices/:mac/bonus-time', async (req, res) => {
+app.delete('/api/parental/devices/:mac/bonus-time', validateMac, async (req, res) => {
     try {
         const result = await parentalControls.cancelBonusTime(req.params.mac);
         if (result.success) {
@@ -477,7 +513,7 @@ app.delete('/api/parental/devices/:mac/bonus-time', async (req, res) => {
 
 app.get('/api/parental/logs/:mac?', async (req, res) => {
     try {
-        const logs = await dbManager.getParentalLogs(req.params.mac, parseInt(req.query.limit) || 100);
+        const logs = await dbManager.getParentalLogs(req.params.mac, Math.min(parseInt(req.query.limit) || 100, 1000));
         res.json(logs);
     } catch (error) {
         logger.error('Error getting parental logs:', error.message);
@@ -485,9 +521,9 @@ app.get('/api/parental/logs/:mac?', async (req, res) => {
     }
 });
 
-app.get('/api/parental/devices/:mac/logs', async (req, res) => {
+app.get('/api/parental/devices/:mac/logs', validateMac, async (req, res) => {
     try {
-        const logs = await dbManager.getParentalLogs(req.params.mac, parseInt(req.query.limit) || 50);
+        const logs = await dbManager.getParentalLogs(req.params.mac, Math.min(parseInt(req.query.limit) || 50, 1000));
         res.json(logs);
     } catch (error) {
         logger.error('Error getting device parental logs:', error.message);
@@ -515,7 +551,7 @@ app.get('/api/settings', (req, res) => {
     }
 });
 
-app.post('/api/settings', (req, res) => {
+app.post('/api/settings', mutationLimiter, (req, res) => {
     try {
         const settings = req.body;
         const envPath = ENV_PATH;
@@ -677,7 +713,7 @@ app.post('/api/test-settings', async (req, res) => {
 // Logs endpoint
 app.get('/api/logs', (req, res) => {
     try {
-        const limit = parseInt(req.query.limit) || 100;
+        const limit = Math.min(parseInt(req.query.limit) || 100, 1000);
         const logs = logger.getRecentLogs(limit);
         res.json(logs);
     } catch (error) {

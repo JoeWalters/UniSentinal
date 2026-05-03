@@ -139,17 +139,29 @@ class DatabaseManager {
     async addNewDevices(devices) {
         if (!devices || devices.length === 0) return;
 
+        // Use INSERT OR IGNORE to avoid overwriting existing rows, then UPDATE
+        // only the mutable fields — this preserves acknowledged / acknowledged_at.
         const insertDevice = this.db.prepare(`
-            INSERT OR REPLACE INTO devices (
+            INSERT OR IGNORE INTO devices (
                 mac, name, ip, hostname, vendor, first_seen, last_seen,
                 is_online, is_blocked, device_type, os_name, note, uptime,
                 is_wired, ap_mac, network, signal, tx_bytes, rx_bytes, detected_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
+        const updateDevice = this.db.prepare(`
+            UPDATE devices SET
+                name = ?, ip = ?, hostname = ?, vendor = ?, last_seen = ?,
+                is_online = ?, is_blocked = ?, device_type = ?, os_name = ?,
+                note = ?, uptime = ?, is_wired = ?, ap_mac = ?, network = ?,
+                signal = ?, tx_bytes = ?, rx_bytes = ?
+            WHERE mac = ?
+        `);
+
         try {
             const transaction = this.db.transaction((devices) => {
                 for (const device of devices) {
+                    const now = new Date().toISOString();
                     insertDevice.run(
                         device.mac,
                         device.name || null,
@@ -170,7 +182,27 @@ class DatabaseManager {
                         device.signal,
                         device.tx_bytes,
                         device.rx_bytes,
-                        new Date().toISOString()
+                        now
+                    );
+                    updateDevice.run(
+                        device.name || null,
+                        device.ip,
+                        device.hostname,
+                        device.vendor,
+                        device.last_seen,
+                        device.is_online ? 1 : 0,
+                        device.is_blocked ? 1 : 0,
+                        device.device_type,
+                        device.os_name,
+                        device.note,
+                        device.uptime,
+                        device.is_wired ? 1 : 0,
+                        device.ap_mac,
+                        device.network,
+                        device.signal,
+                        device.tx_bytes,
+                        device.rx_bytes,
+                        device.mac
                     );
                 }
             });
