@@ -1,6 +1,7 @@
 class UniFiSentinel {
     constructor() {
         this.devices = [];
+        this.acknowledgedDevices = [];
         this.selectedDevice = null;
         this.autoRefreshInterval = null;
         this.statusRefreshInterval = null;
@@ -40,6 +41,26 @@ class UniFiSentinel {
 
         // Known devices accordion
         document.getElementById('knownDevicesToggle').addEventListener('click', () => this.toggleKnownDevices());
+
+        // New-devices filter bar
+        document.getElementById('deviceSearchInput').addEventListener('input', () => this.applyNewDeviceFilters());
+        document.getElementById('deviceSearchClear').addEventListener('click', () => {
+            document.getElementById('deviceSearchInput').value = '';
+            this.applyNewDeviceFilters();
+        });
+        document.getElementById('filterConnection').addEventListener('change', () => this.applyNewDeviceFilters());
+        document.getElementById('filterWatch').addEventListener('change', () => this.applyNewDeviceFilters());
+        document.getElementById('deviceFilterClearAll').addEventListener('click', () => this.clearNewDeviceFilters());
+
+        // Known-devices filter bar
+        document.getElementById('knownSearchInput').addEventListener('input', () => this.applyKnownDeviceFilters());
+        document.getElementById('knownSearchClear').addEventListener('click', () => {
+            document.getElementById('knownSearchInput').value = '';
+            this.applyKnownDeviceFilters();
+        });
+        document.getElementById('knownFilterConnection').addEventListener('change', () => this.applyKnownDeviceFilters());
+        document.getElementById('knownFilterWatch').addEventListener('change', () => this.applyKnownDeviceFilters());
+        document.getElementById('knownFilterClearAll').addEventListener('click', () => this.clearKnownDeviceFilters());
 
         // Tab navigation events
         document.querySelectorAll('.tab-button').forEach(button => {
@@ -147,7 +168,7 @@ class UniFiSentinel {
             if (!response.ok) throw new Error('Failed to fetch devices');
             
             this.devices = await response.json();
-            this.renderDevices();
+            this.applyNewDeviceFilters();
             this.updateStats();
             this.updateLastUpdated();
         } catch (error) {
@@ -245,8 +266,8 @@ class UniFiSentinel {
         try {
             const response = await fetch('/api/devices/acknowledged');
             if (!response.ok) throw new Error('Failed to fetch acknowledged devices');
-            const acknowledged = await response.json();
-            this.renderAcknowledgedDevices(acknowledged);
+            this.acknowledgedDevices = await response.json();
+            this.applyKnownDeviceFilters();
         } catch (error) {
             console.error('Error loading acknowledged devices:', error);
         }
@@ -256,12 +277,26 @@ class UniFiSentinel {
         const grid = document.getElementById('knownDevicesGrid');
         const noKnown = document.getElementById('noKnownDevices');
         const badge = document.getElementById('knownDevicesCount');
+        const filterCount = document.getElementById('knownFilterCount');
 
-        badge.textContent = devices.length;
+        // Badge always shows total acknowledged count
+        badge.textContent = this.acknowledgedDevices.length;
+
+        const isFiltered = devices.length !== this.acknowledgedDevices.length;
+        if (filterCount) {
+            filterCount.textContent = isFiltered
+                ? `Showing ${devices.length} of ${this.acknowledgedDevices.length}`
+                : (this.acknowledgedDevices.length > 0 ? `${this.acknowledgedDevices.length} device${this.acknowledgedDevices.length !== 1 ? 's' : ''}` : '');
+        }
 
         if (devices.length === 0) {
             grid.style.display = 'none';
             noKnown.style.display = 'block';
+            if (this.acknowledgedDevices.length === 0) {
+                noKnown.innerHTML = `<i class="fas fa-inbox"></i><p>No acknowledged devices yet</p>`;
+            } else {
+                noKnown.innerHTML = `<i class="fas fa-filter"></i><p>No devices match your filters</p><small>Try adjusting or clearing the filters above</small>`;
+            }
             return;
         }
 
@@ -443,14 +478,86 @@ class UniFiSentinel {
         }
     }
 
-    renderDevices() {
+    // ── Filter helpers ────────────────────────────────────────────
+
+    _getFilterValues(searchId, connectionId, watchId) {
+        const search = (document.getElementById(searchId)?.value || '').trim().toLowerCase();
+        const connection = document.getElementById(connectionId)?.value || 'all';
+        const watch = document.getElementById(watchId)?.value || 'all';
+        return { search, connection, watch };
+    }
+
+    _filterDevices(devices, { search, connection, watch }) {
+        return devices.filter(d => {
+            if (search) {
+                const haystack = [
+                    d.hostname, d.name, d.alias, d.ip, d.mac, d.vendor
+                ].filter(Boolean).join(' ').toLowerCase();
+                if (!haystack.includes(search)) return false;
+            }
+            if (connection === 'wired' && !d.is_wired) return false;
+            if (connection === 'wireless' && d.is_wired) return false;
+            if (watch === 'watched' && !d.watch_connection) return false;
+            if (watch === 'unwatched' && d.watch_connection) return false;
+            return true;
+        });
+    }
+
+    _updateClearBtn(inputId, clearBtnId) {
+        const val = document.getElementById(inputId)?.value || '';
+        const btn = document.getElementById(clearBtnId);
+        if (btn) btn.style.display = val.length > 0 ? 'inline-flex' : 'none';
+    }
+
+    applyNewDeviceFilters() {
+        this._updateClearBtn('deviceSearchInput', 'deviceSearchClear');
+        const filters = this._getFilterValues('deviceSearchInput', 'filterConnection', 'filterWatch');
+        const filtered = this._filterDevices(this.devices, filters);
+        this.renderDevices(filtered);
+    }
+
+    clearNewDeviceFilters() {
+        document.getElementById('deviceSearchInput').value = '';
+        document.getElementById('filterConnection').value = 'all';
+        document.getElementById('filterWatch').value = 'all';
+        this.applyNewDeviceFilters();
+    }
+
+    applyKnownDeviceFilters() {
+        this._updateClearBtn('knownSearchInput', 'knownSearchClear');
+        const filters = this._getFilterValues('knownSearchInput', 'knownFilterConnection', 'knownFilterWatch');
+        const filtered = this._filterDevices(this.acknowledgedDevices, filters);
+        this.renderAcknowledgedDevices(filtered);
+    }
+
+    clearKnownDeviceFilters() {
+        document.getElementById('knownSearchInput').value = '';
+        document.getElementById('knownFilterConnection').value = 'all';
+        document.getElementById('knownFilterWatch').value = 'all';
+        this.applyKnownDeviceFilters();
+    }
+
+    // ─────────────────────────────────────────────────────────────
+
+    renderDevices(filteredDevices) {
+        const devices = filteredDevices !== undefined ? filteredDevices : this.devices;
         const grid = document.getElementById('devicesGrid');
         const noDevices = document.getElementById('noDevices');
         const deviceCount = document.getElementById('deviceCount');
+        const filterCount = document.getElementById('deviceFilterCount');
 
+        // Total badge always shows raw count
         deviceCount.textContent = this.devices.length;
 
-        // Show/hide acknowledge all button based on device count
+        // Filter result count
+        const isFiltered = devices.length !== this.devices.length;
+        if (filterCount) {
+            filterCount.textContent = isFiltered
+                ? `Showing ${devices.length} of ${this.devices.length}`
+                : (this.devices.length > 0 ? `${this.devices.length} device${this.devices.length !== 1 ? 's' : ''}` : '');
+        }
+
+        // Show/hide acknowledge all button based on total count
         const acknowledgeAllBtn = document.getElementById('acknowledgeAllBtn');
         if (this.devices.length > 0) {
             acknowledgeAllBtn.style.display = 'inline-block';
@@ -458,29 +565,39 @@ class UniFiSentinel {
             acknowledgeAllBtn.style.display = 'none';
         }
 
-        if (this.devices.length === 0) {
+        if (devices.length === 0) {
             grid.style.display = 'none';
-            // Only show the "no devices" message if we're not in configuration mode
-            // The configuration prompt will be shown by checkStatus() if needed
-            this.showNoDevicesMessage();
+            if (this.devices.length === 0) {
+                this.showNoDevicesMessage();
+            } else {
+                const noDevicesEl = document.getElementById('noDevices');
+                if (noDevicesEl) {
+                    noDevicesEl.style.display = 'block';
+                    noDevicesEl.innerHTML = `
+                        <i class="fas fa-filter"></i>
+                        <p>No devices match your filters</p>
+                        <small>Try adjusting or clearing the filters above</small>
+                    `;
+                }
+            }
             return;
         }
 
         grid.style.display = 'grid';
         noDevices.style.display = 'none';
 
-        grid.innerHTML = this.devices.map(device => this.createDeviceCard(device)).join('');
+        grid.innerHTML = devices.map(device => this.createDeviceCard(device)).join('');
 
         // Bind click events for device cards
         grid.querySelectorAll('.device-card').forEach((card, index) => {
-            card.addEventListener('click', () => this.showDeviceModal(this.devices[index]));
+            card.addEventListener('click', () => this.showDeviceModal(devices[index]));
         });
 
         // Bind acknowledge buttons
         grid.querySelectorAll('.acknowledge-btn').forEach((btn, index) => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                this.acknowledgeDevice(this.devices[index].mac);
+                this.acknowledgeDevice(devices[index].mac);
             });
         });
 
@@ -490,9 +607,9 @@ class UniFiSentinel {
                 e.stopPropagation();
                 const isWatching = btn.getAttribute('data-watching') === 'true';
                 if (isWatching) {
-                    this.unwatchDevice(this.devices[index].mac);
+                    this.unwatchDevice(devices[index].mac);
                 } else {
-                    this.watchDevice(this.devices[index].mac);
+                    this.watchDevice(devices[index].mac);
                 }
             });
         });
@@ -1248,8 +1365,9 @@ class UniFiSentinel {
     initializeDarkMode() {
         const darkMode = localStorage.getItem('darkMode');
         const toggleBtn = document.getElementById('darkModeToggle');
-        
-        if (darkMode === 'true') {
+
+        // Default to dark mode unless the user has explicitly disabled it
+        if (darkMode !== 'false') {
             document.body.setAttribute('data-theme', 'dark');
             toggleBtn.innerHTML = '<i class="fas fa-sun"></i>';
         }

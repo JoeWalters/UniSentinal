@@ -112,6 +112,29 @@
                     </div>
                 </div>
                 
+                <!-- Search & Filter bar -->
+                <div class="device-filter-bar" id="deviceFilterBar">
+                    <div class="filter-search">
+                        <i class="fas fa-search filter-search-icon"></i>
+                        <input type="text" id="deviceSearchInput" placeholder="Search name, IP, MAC, vendor…" autocomplete="off">
+                        <button class="filter-clear-btn" id="deviceSearchClear" title="Clear search" style="display:none;"><i class="fas fa-times"></i></button>
+                    </div>
+                    <div class="filter-selects">
+                        <select id="filterConnection" class="filter-select">
+                            <option value="all">All connections</option>
+                            <option value="wired">Wired</option>
+                            <option value="wireless">Wireless</option>
+                        </select>
+                        <select id="filterWatch" class="filter-select">
+                            <option value="all">All devices</option>
+                            <option value="watched">Watched only</option>
+                            <option value="unwatched">Unwatched only</option>
+                        </select>
+                        <button class="btn btn-small btn-secondary" id="deviceFilterClearAll"><i class="fas fa-times"></i> Clear</button>
+                    </div>
+                    <span class="filter-result-count" id="deviceFilterCount"></span>
+                </div>
+
                 <div class="loading" id="loading" style="display: none;">
                     <i class="fas fa-spinner fa-spin"></i> Scanning for new devices...
                 </div>
@@ -136,6 +159,30 @@
                 </button>
                 <div class="accordion-content" id="knownDevicesContent">
                     <p class="known-devices-hint">These devices have been acknowledged. Click <strong>Forget</strong> to re-surface a device as new, or toggle <strong>Watch</strong> to be notified every time it joins the network.</p>
+
+                    <!-- Search & Filter bar for known devices -->
+                    <div class="device-filter-bar">
+                        <div class="filter-search">
+                            <i class="fas fa-search filter-search-icon"></i>
+                            <input type="text" id="knownSearchInput" placeholder="Search name, IP, MAC, vendor…" autocomplete="off">
+                            <button class="filter-clear-btn" id="knownSearchClear" title="Clear search" style="display:none;"><i class="fas fa-times"></i></button>
+                        </div>
+                        <div class="filter-selects">
+                            <select id="knownFilterConnection" class="filter-select">
+                                <option value="all">All connections</option>
+                                <option value="wired">Wired</option>
+                                <option value="wireless">Wireless</option>
+                            </select>
+                            <select id="knownFilterWatch" class="filter-select">
+                                <option value="all">All devices</option>
+                                <option value="watched">Watched only</option>
+                                <option value="unwatched">Unwatched only</option>
+                            </select>
+                            <button class="btn btn-small btn-secondary" id="knownFilterClearAll"><i class="fas fa-times"></i> Clear</button>
+                        </div>
+                        <span class="filter-result-count" id="knownFilterCount"></span>
+                    </div>
+
                     <div class="known-devices-loading" id="knownDevicesLoading" style="display:none;">
                         <i class="fas fa-spinner fa-spin"></i> Loading...
                     </div>

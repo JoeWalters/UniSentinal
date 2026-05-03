@@ -2099,6 +2099,101 @@ footer p {
     }
 }
 
+/* ── Search / Filter bar ── */
+
+.device-filter-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding: 12px 16px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+}
+
+.filter-search {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex: 1 1 200px;
+    min-width: 180px;
+}
+
+.filter-search-icon {
+    position: absolute;
+    left: 10px;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    pointer-events: none;
+}
+
+.filter-search input {
+    width: 100%;
+    padding: 8px 32px 8px 30px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.filter-search input:focus {
+    border-color: var(--accent-primary);
+}
+
+.filter-clear-btn {
+    position: absolute;
+    right: 6px;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 2px 4px;
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.8rem;
+    border-radius: 4px;
+    transition: color 0.15s;
+}
+
+.filter-clear-btn:hover {
+    color: var(--accent-danger);
+}
+
+.filter-selects {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.filter-select {
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.filter-select:focus {
+    border-color: var(--accent-primary);
+}
+
+.filter-result-count {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    margin-left: auto;
+}
+
 /* ── Watch / Forget feature styles ── */
 
 .watch-badge {
