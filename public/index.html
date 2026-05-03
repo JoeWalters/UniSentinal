@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>UniSentinal - UniFi Device Monitor</title>
     <link rel="stylesheet" href="styles.css">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
 </head>
 <body>
     <div class="container">
@@ -698,6 +698,22 @@
                 <button class="btn btn-danger" id="removeDeviceBtn">
                     <i class="fas fa-trash"></i> Remove from Parental Controls
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alerts Modal -->
+    <div class="modal" id="alertsModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-exclamation-triangle" style="color:var(--accent-warning)"></i> Suspicious Device Alerts</h3>
+                <button class="close-btn" id="closeAlertsModal">&times;</button>
+            </div>
+            <div class="modal-body" id="alertsModalBody">
+                <p style="color:var(--text-secondary)">Loading alerts…</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="alertsModalCloseBtn">Close</button>
             </div>
         </div>
     </div>
