@@ -7,6 +7,16 @@ class UniFiSentinel {
         this.init();
     }
 
+    escapeHtml(str) {
+        if (str == null) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     init() {
         this.bindEvents();
         this.setupScheduleEventListeners(); // Setup schedule management event listeners
@@ -27,6 +37,9 @@ class UniFiSentinel {
         document.getElementById('darkModeToggle').addEventListener('click', () => this.toggleDarkMode());
         document.getElementById('settingsBtn').addEventListener('click', () => this.showSettingsModal());
         document.getElementById('diagnosticsToggle').addEventListener('click', () => this.toggleDiagnostics());
+
+        // Known devices accordion
+        document.getElementById('knownDevicesToggle').addEventListener('click', () => this.toggleKnownDevices());
 
         // Tab navigation events
         document.querySelectorAll('.tab-button').forEach(button => {
@@ -183,9 +196,162 @@ class UniFiSentinel {
             
             this.showNotification('Device acknowledged successfully', 'success');
             await this.loadDevices();
+            await this.loadAcknowledgedDevices();
         } catch (error) {
             console.error('Error acknowledging device:', error);
             this.showError('Failed to acknowledge device');
+        }
+    }
+
+    async watchDevice(mac) {
+        try {
+            const response = await fetch(`/api/devices/${mac}/watch`, { method: 'POST' });
+            if (!response.ok) throw new Error('Failed to enable watch');
+            this.showNotification('Watch enabled — you\'ll be notified each time this device joins the network', 'success');
+            await this.loadDevices();
+        } catch (error) {
+            console.error('Error enabling watch:', error);
+            this.showError('Failed to enable watch');
+        }
+    }
+
+    async unwatchDevice(mac) {
+        try {
+            const response = await fetch(`/api/devices/${mac}/unwatch`, { method: 'POST' });
+            if (!response.ok) throw new Error('Failed to disable watch');
+            this.showNotification('Watch disabled', 'info');
+            await this.loadDevices();
+            await this.loadAcknowledgedDevices();
+        } catch (error) {
+            console.error('Error disabling watch:', error);
+            this.showError('Failed to disable watch');
+        }
+    }
+
+    async forgetDevice(mac) {
+        try {
+            const response = await fetch(`/api/devices/${mac}/forget`, { method: 'POST' });
+            if (!response.ok) throw new Error('Failed to forget device');
+            this.showNotification('Device forgotten — it will reappear as new', 'info');
+            await this.loadDevices();
+            await this.loadAcknowledgedDevices();
+        } catch (error) {
+            console.error('Error forgetting device:', error);
+            this.showError('Failed to forget device');
+        }
+    }
+
+    async loadAcknowledgedDevices() {
+        try {
+            const response = await fetch('/api/devices/acknowledged');
+            if (!response.ok) throw new Error('Failed to fetch acknowledged devices');
+            const acknowledged = await response.json();
+            this.renderAcknowledgedDevices(acknowledged);
+        } catch (error) {
+            console.error('Error loading acknowledged devices:', error);
+        }
+    }
+
+    renderAcknowledgedDevices(devices) {
+        const grid = document.getElementById('knownDevicesGrid');
+        const noKnown = document.getElementById('noKnownDevices');
+        const badge = document.getElementById('knownDevicesCount');
+
+        badge.textContent = devices.length;
+
+        if (devices.length === 0) {
+            grid.style.display = 'none';
+            noKnown.style.display = 'block';
+            return;
+        }
+
+        noKnown.style.display = 'none';
+        grid.style.display = 'grid';
+
+        grid.innerHTML = devices.map(device => {
+            const displayName = this.escapeHtml(this.getDeviceDisplayName(device));
+            const colorClass = this.getDeviceColorClass(device);
+            const eMac = this.escapeHtml(device.mac);
+            const eIp = this.escapeHtml(device.ip || 'N/A');
+            const eVendor = this.escapeHtml(device.vendor || 'Unknown');
+            const isWatched = device.watch_connection;
+            const watchLabel = isWatched ? 'Unwatch' : 'Watch';
+            const watchIcon = isWatched ? 'fa-eye-slash' : 'fa-eye';
+            const watchClass = isWatched ? 'btn-warning' : 'btn-outline';
+            const acknowledgedAt = device.acknowledged_at
+                ? new Date(device.acknowledged_at).toLocaleDateString()
+                : 'Unknown';
+
+            return `
+                <div class="device-card ${colorClass} known-device-card" data-mac="${eMac}">
+                    <div class="device-header">
+                        <div class="device-info">
+                            <h3>${displayName}${isWatched ? ' <span class="watch-badge" title="Watching this device"><i class="fas fa-eye"></i></span>' : ''}</h3>
+                        </div>
+                    </div>
+                    <div class="device-details">
+                        <div class="detail-item">
+                            <span class="detail-label">IP Address</span>
+                            <span class="detail-value">${eIp}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Vendor</span>
+                            <span class="detail-value">${eVendor}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Acknowledged</span>
+                            <span class="detail-value">${acknowledgedAt}</span>
+                        </div>
+                    </div>
+                    <div class="device-actions">
+                        <button class="btn ${watchClass} btn-small known-watch-btn" data-mac="${eMac}" data-watching="${isWatched}">
+                            <i class="fas ${watchIcon}"></i> ${watchLabel}
+                        </button>
+                        <button class="btn btn-danger btn-small known-forget-btn" data-mac="${eMac}">
+                            <i class="fas fa-undo"></i> Forget
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        // Bind events
+        grid.querySelectorAll('.known-watch-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const mac = btn.getAttribute('data-mac');
+                const isWatching = btn.getAttribute('data-watching') === 'true';
+                if (isWatching) {
+                    this.unwatchDevice(mac);
+                } else {
+                    this.watchDevice(mac);
+                }
+            });
+        });
+
+        grid.querySelectorAll('.known-forget-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const mac = btn.getAttribute('data-mac');
+                this.forgetDevice(mac);
+            });
+        });
+    }
+
+    toggleKnownDevices() {
+        const content = document.getElementById('knownDevicesContent');
+        const icon = document.querySelector('#knownDevicesToggle .accordion-icon');
+        const isOpen = content.style.maxHeight && content.style.maxHeight !== '0px';
+
+        if (isOpen) {
+            content.style.maxHeight = '0px';
+            content.style.opacity = '0';
+            icon.style.transform = 'rotate(0deg)';
+        } else {
+            content.style.maxHeight = content.scrollHeight + 'px';
+            content.style.opacity = '1';
+            icon.style.transform = 'rotate(180deg)';
+            this.loadAcknowledgedDevices();
         }
     }
 
@@ -212,6 +378,7 @@ class UniFiSentinel {
             
             this.showNotification(`Successfully acknowledged ${result.count} device(s)`, 'success');
             await this.loadDevices(); // Refresh the device list
+            await this.loadAcknowledgedDevices();
             
         } catch (error) {
             console.error('Error acknowledging all devices:', error);
@@ -316,6 +483,19 @@ class UniFiSentinel {
                 this.acknowledgeDevice(this.devices[index].mac);
             });
         });
+
+        // Bind watch toggle buttons
+        grid.querySelectorAll('.watch-btn').forEach((btn, index) => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isWatching = btn.getAttribute('data-watching') === 'true';
+                if (isWatching) {
+                    this.unwatchDevice(this.devices[index].mac);
+                } else {
+                    this.watchDevice(this.devices[index].mac);
+                }
+            });
+        });
     }
 
     getDeviceDisplayName(device) {
@@ -360,31 +540,41 @@ class UniFiSentinel {
     }
 
     createDeviceCard(device) {
-        const displayName = this.getDeviceDisplayName(device);
+        const displayName = this.escapeHtml(this.getDeviceDisplayName(device));
         const colorClass = this.getDeviceColorClass(device);
+        const eMac = this.escapeHtml(device.mac);
+        const eIp = this.escapeHtml(device.ip || 'N/A');
+        const eVendor = this.escapeHtml(device.vendor || 'Unknown');
+        const isWatched = device.watch_connection;
+        const watchLabel = isWatched ? 'Unwatch' : 'Watch';
+        const watchIcon = isWatched ? 'fa-eye-slash' : 'fa-eye';
+        const watchClass = isWatched ? 'btn-warning' : 'btn-outline';
 
         return `
-            <div class="device-card ${colorClass}" data-mac="${device.mac}">
+            <div class="device-card ${colorClass}" data-mac="${eMac}">
                 <div class="device-header">
                     <div class="device-info">
-                        <h3>${displayName}</h3>
+                        <h3>${displayName}${isWatched ? ' <span class="watch-badge" title="Watching this device"><i class="fas fa-eye"></i></span>' : ''}</h3>
                     </div>
                 </div>
                 
                 <div class="device-details">
                     <div class="detail-item">
                         <span class="detail-label">IP Address</span>
-                        <span class="detail-value">${device.ip || 'N/A'}</span>
+                        <span class="detail-value">${eIp}</span>
                     </div>
                     <div class="detail-item">
                         <span class="detail-label">Vendor</span>
-                        <span class="detail-value">${device.vendor || 'Unknown'}</span>
+                        <span class="detail-value">${eVendor}</span>
                     </div>
                 </div>
 
                 <div class="device-actions">
                     <button class="btn btn-outline btn-small">
                         <i class="fas fa-info-circle"></i> Details
+                    </button>
+                    <button class="btn ${watchClass} btn-small watch-btn" data-watching="${isWatched}">
+                        <i class="fas ${watchIcon}"></i> ${watchLabel}
                     </button>
                     <button class="btn btn-primary btn-small acknowledge-btn">
                         <i class="fas fa-check"></i> Acknowledge
@@ -412,21 +602,29 @@ class UniFiSentinel {
             return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         };
 
+        const eHostname = this.escapeHtml(device.hostname || 'Unknown Device');
+        const eMac = this.escapeHtml(device.mac);
+        const eIp = this.escapeHtml(device.ip || 'N/A');
+        const eVendor = this.escapeHtml(device.vendor || 'Unknown');
+        const eNetwork = this.escapeHtml(device.network || 'N/A');
+        const eSignal = device.signal ? this.escapeHtml(String(device.signal)) + ' dBm' : 'N/A';
+        const eApMac = this.escapeHtml(device.ap_mac || 'N/A');
+
         return `
             <div class="device-modal-content">
                 <div class="device-summary">
-                    <h4>${device.hostname || 'Unknown Device'}</h4>
-                    <p class="mac-address">${device.mac}</p>
+                    <h4>${eHostname}</h4>
+                    <p class="mac-address">${eMac}</p>
                 </div>
 
                 <div class="detail-grid">
                     <div class="detail-row">
                         <span class="detail-label">IP Address:</span>
-                        <span class="detail-value">${device.ip || 'N/A'}</span>
+                        <span class="detail-value">${eIp}</span>
                     </div>
                     <div class="detail-row">
                         <span class="detail-label">Vendor:</span>
-                        <span class="detail-value">${device.vendor || 'Unknown'}</span>
+                        <span class="detail-value">${eVendor}</span>
                     </div>
                     <div class="detail-row">
                         <span class="detail-label">Connection Type:</span>
@@ -437,15 +635,15 @@ class UniFiSentinel {
                     </div>
                     <div class="detail-row">
                         <span class="detail-label">Network:</span>
-                        <span class="detail-value">${device.network || 'N/A'}</span>
+                        <span class="detail-value">${eNetwork}</span>
                     </div>
                     <div class="detail-row">
                         <span class="detail-label">Signal Strength:</span>
-                        <span class="detail-value">${device.signal ? device.signal + ' dBm' : 'N/A'}</span>
+                        <span class="detail-value">${eSignal}</span>
                     </div>
                     <div class="detail-row">
                         <span class="detail-label">Access Point:</span>
-                        <span class="detail-value">${device.ap_mac || 'N/A'}</span>
+                        <span class="detail-value">${eApMac}</span>
                     </div>
                     <div class="detail-row">
                         <span class="detail-label">Data Transmitted:</span>
@@ -662,7 +860,7 @@ class UniFiSentinel {
         notification.className = `notification notification-${type}`;
         notification.innerHTML = `
             <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : type === 'warning' ? 'exclamation-triangle' : 'info-circle'}"></i>
-            ${message}
+            ${this.escapeHtml(message)}
         `;
 
         // Add notification styles
@@ -1002,15 +1200,15 @@ class UniFiSentinel {
         connectionDetails.innerHTML = `
             <div class="info-item">
                 <span class="info-label">Controller URL</span>
-                <span class="info-value">${details.controllerUrl || 'N/A'}</span>
+                <span class="info-value">${this.escapeHtml(details.controllerUrl || 'N/A')}</span>
             </div>
             <div class="info-item">
                 <span class="info-label">Site</span>
-                <span class="info-value">${details.site || 'N/A'}</span>
+                <span class="info-value">${this.escapeHtml(details.site || 'N/A')}</span>
             </div>
             <div class="info-item">
                 <span class="info-label">Username</span>
-                <span class="info-value">${details.username || 'N/A'}</span>
+                <span class="info-value">${this.escapeHtml(details.username || 'N/A')}</span>
             </div>
             <div class="info-item">
                 <span class="info-label">Credentials</span>
@@ -1018,11 +1216,11 @@ class UniFiSentinel {
             </div>
             <div class="info-item">
                 <span class="info-label">SSL Verification</span>
-                <span class="info-value">${details.sslVerification || 'N/A'}</span>
+                <span class="info-value">${this.escapeHtml(details.sslVerification || 'N/A')}</span>
             </div>
             <div class="info-item">
                 <span class="info-label">User Agent</span>
-                <span class="info-value">${details.userAgent || 'N/A'}</span>
+                <span class="info-value">${this.escapeHtml(details.userAgent || 'N/A')}</span>
             </div>
         `;
 
@@ -1356,7 +1554,7 @@ class UniFiSentinel {
                 noDevices.innerHTML = `
                     <i class="fas fa-exclamation-triangle"></i>
                     <p>Unable to load parental controls data</p>
-                    <small>${error.message}</small>
+                    <small>${this.escapeHtml(error.message)}</small>
                 `;
             }
             
@@ -1406,12 +1604,20 @@ class UniFiSentinel {
                 '<i class="fas fa-circle online-indicator offline" title="Offline"></i>';
             
             // Removed time limit functionality - not realistic to enforce
+            const eName = this.escapeHtml(device.device_name);
+            const eMac = this.escapeHtml(device.mac);
+            const eMacUpper = this.escapeHtml(device.mac.toUpperCase());
+            const eIp = this.escapeHtml(device.currentIp || device.ip || 'N/A');
+            const eVendor = this.escapeHtml(device.vendor);
+            const eBonusMin = device.bonusTime && device.bonusTime.isActive
+                ? this.escapeHtml(String(device.bonusTime.remainingMinutes))
+                : '';
 
             return `
-                <div class="managed-device-card ${cardClass}" data-mac="${device.mac}">
+                <div class="managed-device-card ${cardClass}" data-mac="${eMac}">
                     <div class="device-header">
                         <div class="device-name-section">
-                            <div class="device-name">${device.device_name}</div>
+                            <div class="device-name">${eName}</div>
                             <div class="device-indicators">
                                 ${onlineIcon}
                                 ${statusIcon}
@@ -1424,23 +1630,23 @@ class UniFiSentinel {
                     <div class="device-details">
                         <div class="device-info">
                             <span class="label">MAC:</span>
-                            <span class="value">${device.mac.toUpperCase()}</span>
+                            <span class="value">${eMacUpper}</span>
                         </div>
                         <div class="device-info">
                             <span class="label">IP:</span>
-                            <span class="value">${device.currentIp || device.ip || 'N/A'}</span>
+                            <span class="value">${eIp}</span>
                         </div>
                         ${device.vendor ? `
                             <div class="device-info">
                                 <span class="label">Vendor:</span>
-                                <span class="value">${device.vendor}</span>
+                                <span class="value">${eVendor}</span>
                             </div>
                         ` : ''}
                         ${device.bonusTime && device.bonusTime.isActive ? `
                             <div class="device-info bonus-time-info">
                                 <span class="label">Bonus Time:</span>
                                 <span class="value bonus-time-remaining">
-                                    <i class="fas fa-clock"></i> ${device.bonusTime.remainingMinutes} min left
+                                    <i class="fas fa-clock"></i> ${eBonusMin} min left
                                 </span>
                             </div>
                         ` : ''}
@@ -1448,18 +1654,18 @@ class UniFiSentinel {
                     <div class="device-actions">
                         ${device.bonusTime && device.bonusTime.isActive ? `
                             <button class="btn btn-small btn-warning cancel-bonus-btn" 
-                                    data-mac="${device.mac}">
+                                    data-mac="${eMac}">
                                 <i class="fas fa-times"></i> Cancel Bonus Time
                             </button>
                         ` : `
                             <button class="btn btn-small toggle-block-btn ${isBlocked ? 'btn-success' : 'btn-danger'}" 
-                                    data-mac="${device.mac}" data-blocked="${isBlocked}">
+                                    data-mac="${eMac}" data-blocked="${isBlocked}">
                                 <i class="fas ${isBlocked ? 'fa-check' : 'fa-ban'}"></i>
                                 ${isBlocked ? 'Unblock' : 'Block'}
                             </button>
                         `}
                         <button class="btn btn-small btn-secondary manage-device-btn" 
-                                data-mac="${device.mac}">
+                                data-mac="${eMac}">
                             <i class="fas fa-cog"></i> Manage
                         </button>
                     </div>
@@ -1748,11 +1954,17 @@ class UniFiSentinel {
         
         devicesList.innerHTML = devices.map(device => {
             // Determine the best display name
-            const displayName = device.user_alias || device.hostname || `Device-${device.mac.slice(-6)}`;
-            const secondaryName = device.user_alias && device.hostname ? device.hostname : null;
+            const displayName = this.escapeHtml(device.user_alias || device.hostname || `Device-${device.mac.slice(-6)}`);
+            const secondaryName = device.user_alias && device.hostname ? this.escapeHtml(device.hostname) : null;
             
             // Format vendor name
-            const vendor = device.vendor || 'Unknown Vendor';
+            const vendor = this.escapeHtml(device.vendor || 'Unknown Vendor');
+            const eMac = this.escapeHtml(device.mac);
+            const eMacUpper = this.escapeHtml(device.mac.toUpperCase());
+            const eIp = this.escapeHtml(device.ip);
+            const eVendorAttr = this.escapeHtml((device.vendor || '').toLowerCase());
+            const eStatus = device.is_online ? 'online' : 'offline';
+            const eConnection = device.is_wired ? 'wired' : 'wifi';
             
             // Online status
             const statusIcon = device.is_online ? 
@@ -1769,10 +1981,10 @@ class UniFiSentinel {
 
             return `
                 <div class="available-device-item" 
-                     data-mac="${device.mac}"
-                     data-status="${device.is_online ? 'online' : 'offline'}"
-                     data-connection="${device.is_wired ? 'wired' : 'wifi'}"
-                     data-vendor="${(device.vendor || '').toLowerCase()}">
+                     data-mac="${eMac}"
+                     data-status="${eStatus}"
+                     data-connection="${eConnection}"
+                     data-vendor="${eVendorAttr}">
                     <div class="device-content">
                         <div class="device-name">
                             ${displayName}
@@ -1789,12 +2001,12 @@ class UniFiSentinel {
                             </div>
                             <div class="detail-row">
                                 <span class="label">MAC:</span>
-                                <span class="mac">${device.mac.toUpperCase()}</span>
+                                <span class="mac">${eMacUpper}</span>
                             </div>
                             ${device.ip ? `
                                 <div class="detail-row">
                                     <span class="label">IP:</span>
-                                    <span class="ip">${device.ip}</span>
+                                    <span class="ip">${eIp}</span>
                                 </div>
                             ` : ''}
                             <div class="detail-row">
@@ -1804,7 +2016,7 @@ class UniFiSentinel {
                         </div>
                     </div>
                     <div class="device-actions">
-                        <button class="btn btn-primary btn-small add-device-btn" data-mac="${device.mac}">
+                        <button class="btn btn-primary btn-small add-device-btn" data-mac="${eMac}">
                             <i class="fas fa-plus"></i> Add to Controls
                         </button>
                     </div>

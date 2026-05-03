@@ -52,6 +52,8 @@ class DatabaseManager {
                 detected_at TEXT NOT NULL,
                 acknowledged BOOLEAN DEFAULT 0,
                 acknowledged_at TEXT,
+                watch_connection BOOLEAN DEFAULT 0,
+                watch_last_alerted_at TEXT,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
         `;
@@ -121,7 +123,9 @@ class DatabaseManager {
                 { name: 'device_type', type: 'TEXT' },
                 { name: 'os_name', type: 'TEXT' },
                 { name: 'note', type: 'TEXT' },
-                { name: 'uptime', type: 'INTEGER' }
+                { name: 'uptime', type: 'INTEGER' },
+                { name: 'watch_connection', type: 'BOOLEAN DEFAULT 0' },
+                { name: 'watch_last_alerted_at', type: 'TEXT' }
             ];
             
             for (const column of newColumns) {
@@ -139,17 +143,29 @@ class DatabaseManager {
     async addNewDevices(devices) {
         if (!devices || devices.length === 0) return;
 
+        // Use INSERT OR IGNORE to avoid overwriting existing rows, then UPDATE
+        // only the mutable fields — this preserves acknowledged / acknowledged_at.
         const insertDevice = this.db.prepare(`
-            INSERT OR REPLACE INTO devices (
+            INSERT OR IGNORE INTO devices (
                 mac, name, ip, hostname, vendor, first_seen, last_seen,
                 is_online, is_blocked, device_type, os_name, note, uptime,
                 is_wired, ap_mac, network, signal, tx_bytes, rx_bytes, detected_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
+        const updateDevice = this.db.prepare(`
+            UPDATE devices SET
+                name = ?, ip = ?, hostname = ?, vendor = ?, last_seen = ?,
+                is_online = ?, is_blocked = ?, device_type = ?, os_name = ?,
+                note = ?, uptime = ?, is_wired = ?, ap_mac = ?, network = ?,
+                signal = ?, tx_bytes = ?, rx_bytes = ?
+            WHERE mac = ?
+        `);
+
         try {
             const transaction = this.db.transaction((devices) => {
                 for (const device of devices) {
+                    const now = new Date().toISOString();
                     insertDevice.run(
                         device.mac,
                         device.name || null,
@@ -170,16 +186,81 @@ class DatabaseManager {
                         device.signal,
                         device.tx_bytes,
                         device.rx_bytes,
-                        new Date().toISOString()
+                        now
+                    );
+                    updateDevice.run(
+                        device.name || null,
+                        device.ip,
+                        device.hostname,
+                        device.vendor,
+                        device.last_seen,
+                        device.is_online ? 1 : 0,
+                        device.is_blocked ? 1 : 0,
+                        device.device_type,
+                        device.os_name,
+                        device.note,
+                        device.uptime,
+                        device.is_wired ? 1 : 0,
+                        device.ap_mac,
+                        device.network,
+                        device.signal,
+                        device.tx_bytes,
+                        device.rx_bytes,
+                        device.mac
                     );
                 }
             });
 
             transaction(devices);
             console.log(`Added ${devices.length} new device(s) to database`);
+
+            // Re-alert watched devices that have reconnected since the last alert
+            this._checkWatchAlerts(devices);
         } catch (error) {
             console.error('Error adding devices:', error);
             throw error;
+        }
+    }
+
+    _checkWatchAlerts(scannedDevices) {
+        try {
+            const watched = this.db.prepare(
+                `SELECT mac, watch_last_alerted_at FROM devices WHERE watch_connection = 1 AND acknowledged = 1`
+            ).all();
+
+            if (watched.length === 0) return;
+
+            const devicesByMac = {};
+            for (const d of scannedDevices) devicesByMac[d.mac] = d;
+
+            const now = Date.now();
+            const alertStmt = this.db.prepare(
+                `UPDATE devices SET acknowledged = 0, watch_last_alerted_at = ? WHERE mac = ?`
+            );
+
+            for (const dbDevice of watched) {
+                const scanDevice = devicesByMac[dbDevice.mac];
+                if (!scanDevice || !scanDevice.is_online) continue;
+
+                const uptimeMs = (scanDevice.uptime || 0) * 1000;
+                let shouldAlert = false;
+
+                if (!dbDevice.watch_last_alerted_at) {
+                    shouldAlert = true; // No previous alert recorded
+                } else {
+                    const timeSinceAlertMs = now - new Date(dbDevice.watch_last_alerted_at).getTime();
+                    // Alert if device reconnected after last alert (uptime restarted)
+                    shouldAlert = timeSinceAlertMs > uptimeMs;
+                }
+
+                if (shouldAlert) {
+                    alertStmt.run(new Date(now).toISOString(), dbDevice.mac);
+                    console.log(`Watch alert triggered for device: ${dbDevice.mac}`);
+                }
+            }
+        } catch (error) {
+            console.error('Error checking watch alerts:', error);
+            // Don't throw - watch alerts are non-critical
         }
     }
 
@@ -197,7 +278,8 @@ class DatabaseManager {
             const devices = rows.map(row => ({
                 ...row,
                 is_wired: Boolean(row.is_wired),
-                acknowledged: Boolean(row.acknowledged)
+                acknowledged: Boolean(row.acknowledged),
+                watch_connection: Boolean(row.watch_connection)
             }));
             
             return devices;
@@ -224,6 +306,49 @@ class DatabaseManager {
             console.log(`Device ${mac} acknowledged`);
         } catch (error) {
             console.error('Error acknowledging device:', error);
+            throw error;
+        }
+    }
+
+    async forgetDevice(mac) {
+        try {
+            const result = this.db.prepare(
+                `UPDATE devices SET acknowledged = 0, acknowledged_at = NULL WHERE mac = ?`
+            ).run(mac);
+            if (result.changes === 0) throw new Error('Device not found');
+            console.log(`Device ${mac} forgotten (unacknowledged)`);
+        } catch (error) {
+            console.error('Error forgetting device:', error);
+            throw error;
+        }
+    }
+
+    async setWatchConnection(mac, watch) {
+        try {
+            const result = this.db.prepare(
+                `UPDATE devices SET watch_connection = ? WHERE mac = ?`
+            ).run(watch ? 1 : 0, mac);
+            if (result.changes === 0) throw new Error('Device not found');
+            console.log(`Device ${mac} watch_connection set to ${watch}`);
+        } catch (error) {
+            console.error('Error setting watch connection:', error);
+            throw error;
+        }
+    }
+
+    async getAcknowledgedDevices() {
+        try {
+            const rows = this.db.prepare(
+                `SELECT * FROM devices WHERE acknowledged = 1 ORDER BY acknowledged_at DESC`
+            ).all();
+            return rows.map(row => ({
+                ...row,
+                is_wired: Boolean(row.is_wired),
+                acknowledged: Boolean(row.acknowledged),
+                watch_connection: Boolean(row.watch_connection)
+            }));
+        } catch (error) {
+            console.error('Error getting acknowledged devices:', error);
             throw error;
         }
     }

@@ -2098,3 +2098,47 @@ footer p {
         min-width: 120px;
     }
 }
+
+/* ── Watch / Forget feature styles ── */
+
+.watch-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.75rem;
+    color: var(--accent-warning);
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
+.btn-warning {
+    background: linear-gradient(135deg, var(--accent-warning), #d68910);
+    color: #fff;
+}
+
+.btn-warning:hover {
+    background: linear-gradient(135deg, #d68910, #b7770d);
+    color: #fff;
+}
+
+.known-devices-accordion {
+    margin-top: 20px;
+}
+
+.known-devices-hint {
+    font-size: 0.88rem;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+    line-height: 1.5;
+}
+
+.known-devices-grid {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+.known-device-card {
+    opacity: 0.88;
+}
+
+.known-device-card:hover {
+    opacity: 1;
+}
