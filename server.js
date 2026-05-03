@@ -175,6 +175,52 @@ app.post('/api/devices/:mac/acknowledge', validateMac, async (req, res) => {
     }
 });
 
+app.post('/api/devices/:mac/forget', validateMac, async (req, res) => {
+    try {
+        const { mac } = req.params;
+        await dbManager.forgetDevice(mac);
+        logger.info(`Device forgotten: ${mac}`);
+        res.json({ success: true, message: 'Device forgotten' });
+    } catch (error) {
+        logger.error('Error forgetting device:', error.message);
+        res.status(500).json({ error: 'Failed to forget device' });
+    }
+});
+
+app.post('/api/devices/:mac/watch', validateMac, async (req, res) => {
+    try {
+        const { mac } = req.params;
+        await dbManager.setWatchConnection(mac, true);
+        logger.info(`Watch enabled for device: ${mac}`);
+        res.json({ success: true, message: 'Watch enabled' });
+    } catch (error) {
+        logger.error('Error enabling watch:', error.message);
+        res.status(500).json({ error: 'Failed to enable watch' });
+    }
+});
+
+app.post('/api/devices/:mac/unwatch', validateMac, async (req, res) => {
+    try {
+        const { mac } = req.params;
+        await dbManager.setWatchConnection(mac, false);
+        logger.info(`Watch disabled for device: ${mac}`);
+        res.json({ success: true, message: 'Watch disabled' });
+    } catch (error) {
+        logger.error('Error disabling watch:', error.message);
+        res.status(500).json({ error: 'Failed to disable watch' });
+    }
+});
+
+app.get('/api/devices/acknowledged', async (req, res) => {
+    try {
+        const devices = await dbManager.getAcknowledgedDevices();
+        res.json(devices);
+    } catch (error) {
+        logger.error('Error fetching acknowledged devices:', error.message);
+        res.status(500).json({ error: 'Failed to fetch acknowledged devices' });
+    }
+});
+
 app.post('/api/devices/acknowledge-all', async (req, res) => {
     try {
         const unacknowledgedDevices = await dbManager.getUnacknowledgedDevices();

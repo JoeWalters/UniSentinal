@@ -38,6 +38,9 @@ class UniFiSentinel {
         document.getElementById('settingsBtn').addEventListener('click', () => this.showSettingsModal());
         document.getElementById('diagnosticsToggle').addEventListener('click', () => this.toggleDiagnostics());
 
+        // Known devices accordion
+        document.getElementById('knownDevicesToggle').addEventListener('click', () => this.toggleKnownDevices());
+
         // Tab navigation events
         document.querySelectorAll('.tab-button').forEach(button => {
             button.addEventListener('click', (e) => {
@@ -193,9 +196,162 @@ class UniFiSentinel {
             
             this.showNotification('Device acknowledged successfully', 'success');
             await this.loadDevices();
+            await this.loadAcknowledgedDevices();
         } catch (error) {
             console.error('Error acknowledging device:', error);
             this.showError('Failed to acknowledge device');
+        }
+    }
+
+    async watchDevice(mac) {
+        try {
+            const response = await fetch(`/api/devices/${mac}/watch`, { method: 'POST' });
+            if (!response.ok) throw new Error('Failed to enable watch');
+            this.showNotification('Watch enabled — you\'ll be notified each time this device joins the network', 'success');
+            await this.loadDevices();
+        } catch (error) {
+            console.error('Error enabling watch:', error);
+            this.showError('Failed to enable watch');
+        }
+    }
+
+    async unwatchDevice(mac) {
+        try {
+            const response = await fetch(`/api/devices/${mac}/unwatch`, { method: 'POST' });
+            if (!response.ok) throw new Error('Failed to disable watch');
+            this.showNotification('Watch disabled', 'info');
+            await this.loadDevices();
+            await this.loadAcknowledgedDevices();
+        } catch (error) {
+            console.error('Error disabling watch:', error);
+            this.showError('Failed to disable watch');
+        }
+    }
+
+    async forgetDevice(mac) {
+        try {
+            const response = await fetch(`/api/devices/${mac}/forget`, { method: 'POST' });
+            if (!response.ok) throw new Error('Failed to forget device');
+            this.showNotification('Device forgotten — it will reappear as new', 'info');
+            await this.loadDevices();
+            await this.loadAcknowledgedDevices();
+        } catch (error) {
+            console.error('Error forgetting device:', error);
+            this.showError('Failed to forget device');
+        }
+    }
+
+    async loadAcknowledgedDevices() {
+        try {
+            const response = await fetch('/api/devices/acknowledged');
+            if (!response.ok) throw new Error('Failed to fetch acknowledged devices');
+            const acknowledged = await response.json();
+            this.renderAcknowledgedDevices(acknowledged);
+        } catch (error) {
+            console.error('Error loading acknowledged devices:', error);
+        }
+    }
+
+    renderAcknowledgedDevices(devices) {
+        const grid = document.getElementById('knownDevicesGrid');
+        const noKnown = document.getElementById('noKnownDevices');
+        const badge = document.getElementById('knownDevicesCount');
+
+        badge.textContent = devices.length;
+
+        if (devices.length === 0) {
+            grid.style.display = 'none';
+            noKnown.style.display = 'block';
+            return;
+        }
+
+        noKnown.style.display = 'none';
+        grid.style.display = 'grid';
+
+        grid.innerHTML = devices.map(device => {
+            const displayName = this.escapeHtml(this.getDeviceDisplayName(device));
+            const colorClass = this.getDeviceColorClass(device);
+            const eMac = this.escapeHtml(device.mac);
+            const eIp = this.escapeHtml(device.ip || 'N/A');
+            const eVendor = this.escapeHtml(device.vendor || 'Unknown');
+            const isWatched = device.watch_connection;
+            const watchLabel = isWatched ? 'Unwatch' : 'Watch';
+            const watchIcon = isWatched ? 'fa-eye-slash' : 'fa-eye';
+            const watchClass = isWatched ? 'btn-warning' : 'btn-outline';
+            const acknowledgedAt = device.acknowledged_at
+                ? new Date(device.acknowledged_at).toLocaleDateString()
+                : 'Unknown';
+
+            return `
+                <div class="device-card ${colorClass} known-device-card" data-mac="${eMac}">
+                    <div class="device-header">
+                        <div class="device-info">
+                            <h3>${displayName}${isWatched ? ' <span class="watch-badge" title="Watching this device"><i class="fas fa-eye"></i></span>' : ''}</h3>
+                        </div>
+                    </div>
+                    <div class="device-details">
+                        <div class="detail-item">
+                            <span class="detail-label">IP Address</span>
+                            <span class="detail-value">${eIp}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Vendor</span>
+                            <span class="detail-value">${eVendor}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Acknowledged</span>
+                            <span class="detail-value">${acknowledgedAt}</span>
+                        </div>
+                    </div>
+                    <div class="device-actions">
+                        <button class="btn ${watchClass} btn-small known-watch-btn" data-mac="${eMac}" data-watching="${isWatched}">
+                            <i class="fas ${watchIcon}"></i> ${watchLabel}
+                        </button>
+                        <button class="btn btn-danger btn-small known-forget-btn" data-mac="${eMac}">
+                            <i class="fas fa-undo"></i> Forget
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        // Bind events
+        grid.querySelectorAll('.known-watch-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const mac = btn.getAttribute('data-mac');
+                const isWatching = btn.getAttribute('data-watching') === 'true';
+                if (isWatching) {
+                    this.unwatchDevice(mac);
+                } else {
+                    this.watchDevice(mac);
+                }
+            });
+        });
+
+        grid.querySelectorAll('.known-forget-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const mac = btn.getAttribute('data-mac');
+                this.forgetDevice(mac);
+            });
+        });
+    }
+
+    toggleKnownDevices() {
+        const content = document.getElementById('knownDevicesContent');
+        const icon = document.querySelector('#knownDevicesToggle .accordion-icon');
+        const isOpen = content.style.maxHeight && content.style.maxHeight !== '0px';
+
+        if (isOpen) {
+            content.style.maxHeight = '0px';
+            content.style.opacity = '0';
+            icon.style.transform = 'rotate(0deg)';
+        } else {
+            content.style.maxHeight = content.scrollHeight + 'px';
+            content.style.opacity = '1';
+            icon.style.transform = 'rotate(180deg)';
+            this.loadAcknowledgedDevices();
         }
     }
 
@@ -222,6 +378,7 @@ class UniFiSentinel {
             
             this.showNotification(`Successfully acknowledged ${result.count} device(s)`, 'success');
             await this.loadDevices(); // Refresh the device list
+            await this.loadAcknowledgedDevices();
             
         } catch (error) {
             console.error('Error acknowledging all devices:', error);
@@ -326,6 +483,19 @@ class UniFiSentinel {
                 this.acknowledgeDevice(this.devices[index].mac);
             });
         });
+
+        // Bind watch toggle buttons
+        grid.querySelectorAll('.watch-btn').forEach((btn, index) => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isWatching = btn.getAttribute('data-watching') === 'true';
+                if (isWatching) {
+                    this.unwatchDevice(this.devices[index].mac);
+                } else {
+                    this.watchDevice(this.devices[index].mac);
+                }
+            });
+        });
     }
 
     getDeviceDisplayName(device) {
@@ -375,12 +545,16 @@ class UniFiSentinel {
         const eMac = this.escapeHtml(device.mac);
         const eIp = this.escapeHtml(device.ip || 'N/A');
         const eVendor = this.escapeHtml(device.vendor || 'Unknown');
+        const isWatched = device.watch_connection;
+        const watchLabel = isWatched ? 'Unwatch' : 'Watch';
+        const watchIcon = isWatched ? 'fa-eye-slash' : 'fa-eye';
+        const watchClass = isWatched ? 'btn-warning' : 'btn-outline';
 
         return `
             <div class="device-card ${colorClass}" data-mac="${eMac}">
                 <div class="device-header">
                     <div class="device-info">
-                        <h3>${displayName}</h3>
+                        <h3>${displayName}${isWatched ? ' <span class="watch-badge" title="Watching this device"><i class="fas fa-eye"></i></span>' : ''}</h3>
                     </div>
                 </div>
                 
@@ -398,6 +572,9 @@ class UniFiSentinel {
                 <div class="device-actions">
                     <button class="btn btn-outline btn-small">
                         <i class="fas fa-info-circle"></i> Details
+                    </button>
+                    <button class="btn ${watchClass} btn-small watch-btn" data-watching="${isWatched}">
+                        <i class="fas ${watchIcon}"></i> ${watchLabel}
                     </button>
                     <button class="btn btn-primary btn-small acknowledge-btn">
                         <i class="fas fa-check"></i> Acknowledge

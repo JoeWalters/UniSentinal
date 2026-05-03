@@ -127,6 +127,28 @@
                 </div>
             </div>
 
+            <!-- Known / Acknowledged Devices Accordion -->
+            <div class="diagnostics-accordion known-devices-accordion">
+                <button class="accordion-header" id="knownDevicesToggle">
+                    <i class="fas fa-check-circle"></i>
+                    <span>Known Devices <span id="knownDevicesCount" class="count-badge">0</span></span>
+                    <i class="fas fa-chevron-down accordion-icon"></i>
+                </button>
+                <div class="accordion-content" id="knownDevicesContent">
+                    <p class="known-devices-hint">These devices have been acknowledged. Click <strong>Forget</strong> to re-surface a device as new, or toggle <strong>Watch</strong> to be notified every time it joins the network.</p>
+                    <div class="known-devices-loading" id="knownDevicesLoading" style="display:none;">
+                        <i class="fas fa-spinner fa-spin"></i> Loading...
+                    </div>
+                    <div class="no-devices" id="noKnownDevices" style="display:none;">
+                        <i class="fas fa-inbox"></i>
+                        <p>No acknowledged devices yet</p>
+                    </div>
+                    <div class="devices-grid known-devices-grid" id="knownDevicesGrid">
+                        <!-- Known device cards will be populated here -->
+                    </div>
+                </div>
+            </div>
+
             <!-- Connection Diagnostics Accordion -->
             <div class="diagnostics-accordion">
                 <button class="accordion-header" id="diagnosticsToggle">
