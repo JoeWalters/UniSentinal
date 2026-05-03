@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UniSentinal - Login</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .login-wrapper {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-color, #f0f4f8);
+        }
+        .login-card {
+            background: var(--card-bg, #fff);
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+            padding: 2.5rem 2rem;
+            width: 100%;
+            max-width: 380px;
+        }
+        .login-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .login-header h1 {
+            font-size: 1.6rem;
+            color: var(--text-color, #2c3e50);
+            margin: 0.5rem 0 0.25rem;
+        }
+        .login-header p {
+            color: var(--text-muted, #7f8c8d);
+            font-size: 0.9rem;
+            margin: 0;
+        }
+        .login-form .setting-item { margin-bottom: 1.2rem; }
+        .login-form label { display: block; margin-bottom: 0.4rem; font-weight: 600; color: var(--text-color, #2c3e50); font-size: 0.9rem; }
+        .login-form input {
+            width: 100%;
+            padding: 0.65rem 0.9rem;
+            border: 1px solid var(--border-color, #ddd);
+            border-radius: 8px;
+            font-size: 0.95rem;
+            background: var(--input-bg, #fff);
+            color: var(--text-color, #2c3e50);
+            box-sizing: border-box;
+        }
+        .login-form input:focus { outline: none; border-color: #3498db; box-shadow: 0 0 0 3px rgba(52,152,219,0.15); }
+        #loginError { color: #e74c3c; font-size: 0.875rem; margin-bottom: 1rem; display: none; }
+        .login-btn { width: 100%; padding: 0.75rem; font-size: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="login-wrapper">
+        <div class="login-card">
+            <div class="login-header">
+                <i class="fas fa-shield-alt" style="font-size:2.5rem;color:#3498db;"></i>
+                <h1>UniSentinal</h1>
+                <p>Sign in to continue</p>
+            </div>
+            <form class="login-form" id="loginForm" autocomplete="on">
+                <div class="setting-item">
+                    <label for="loginUsername">Username</label>
+                    <input type="text" id="loginUsername" name="username" autocomplete="username" required>
+                </div>
+                <div class="setting-item">
+                    <label for="loginPassword">Password</label>
+                    <input type="password" id="loginPassword" name="password" autocomplete="current-password" required>
+                </div>
+                <div id="loginError"><i class="fas fa-exclamation-circle"></i> <span id="loginErrorMsg">Invalid credentials</span></div>
+                <button type="submit" class="btn btn-primary login-btn">
+                    <i class="fas fa-sign-in-alt"></i> Sign In
+                </button>
+            </form>
+        </div>
+    </div>
+    <script>
+        // Apply saved dark mode preference
+        if (localStorage.getItem('darkMode') !== 'false') {
+            document.body.setAttribute('data-theme', 'dark');
+        }
+
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('loginUsername').value;
+            const password = document.getElementById('loginPassword').value;
+            const errorEl = document.getElementById('loginError');
+            const errorMsg = document.getElementById('loginErrorMsg');
+            const btn = e.target.querySelector('button[type=submit]');
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Signing in…';
+            errorEl.style.display = 'none';
+
+            try {
+                const resp = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await resp.json();
+                if (resp.ok && data.success) {
+                    window.location.href = '/';
+                } else {
+                    errorMsg.textContent = data.error || 'Invalid credentials';
+                    errorEl.style.display = 'block';
+                }
+            } catch (err) {
+                errorMsg.textContent = 'Network error — please try again';
+                errorEl.style.display = 'block';
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Sign In';
+            }
+        });
+    </script>
+</body>
+</html>

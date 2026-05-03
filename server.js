@@ -2,6 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const session = require('express-session');
+const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 
@@ -22,6 +24,7 @@ const DatabaseManager = require('./src/database/DatabaseManager');
 const ParentalControlsManager = require('./src/controllers/ParentalControlsManager');
 const Logger = require('./src/utils/Logger');
 const CredentialManager = require('./src/utils/CredentialManager');
+const NotificationManager = require('./src/utils/NotificationManager');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -29,6 +32,7 @@ const PORT = process.env.PORT || 3000;
 // Initialize logger and credential manager
 const logger = new Logger();
 const credentialManager = new CredentialManager();
+const notificationManager = new NotificationManager();
 
 // Decrypt environment variables that were loaded from .env
 const sensitiveFields = ['UNIFI_PASSWORD'];
@@ -61,6 +65,31 @@ app.use(helmet({
 }));
 app.use(cors());
 app.use(express.json());
+
+// ── Session & optional Web UI Auth ───────────────────────────────────────────
+const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+app.use(session({
+    secret: SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        httpOnly: true,
+        sameSite: 'strict',
+        maxAge: 8 * 60 * 60 * 1000  // 8 hours
+    }
+}));
+
+// Auth middleware — only enforced when UI_AUTH_ENABLED=true
+function requireAuth(req, res, next) {
+    if (process.env.UI_AUTH_ENABLED !== 'true') return next();
+    if (req.session && req.session.authenticated) return next();
+    // Allow the login page and login API through
+    if (req.path === '/login' || req.path === '/api/auth/login') return next();
+    if (req.accepts('html')) return res.redirect('/login');
+    return res.status(401).json({ error: 'Unauthorized' });
+}
+
+app.use(requireAuth);
 
 // MAC address validation middleware for routes with :mac param
 const MAC_RE = /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i;
@@ -121,9 +150,92 @@ const dbManager = new DatabaseManager();
 const unifiController = new UnifiController();
 const parentalControls = new ParentalControlsManager(unifiController, dbManager);
 
+// Scan interval handle — kept so it can be restarted when settings change
+let scanIntervalHandle = null;
+
+function startScanInterval(intervalMs) {
+    if (scanIntervalHandle) clearInterval(scanIntervalHandle);
+    scanIntervalHandle = setInterval(async () => {
+        try {
+            if (!unifiController.isConfigured()) return;
+            const newDevices = await unifiController.scanForNewDevices();
+            if (newDevices.length > 0) {
+                await dbManager.addNewDevices(newDevices);
+                logger.info(`Periodic scan found ${newDevices.length} new device(s)`);
+                // Send push notifications for new devices
+                for (const device of newDevices) {
+                    notificationManager.notifyNewDevice(device).catch(() => {});
+                }
+            }
+            // Re-check watch alerts and send push notifications for watched reconnections
+            const newWatched = await dbManager.getUnacknowledgedDevices();
+            for (const d of newWatched) {
+                if (d.watch_connection) {
+                    notificationManager.notifyWatchedDevice(d).catch(() => {});
+                }
+            }
+            // Run suspicious device detection
+            const suspicious = dbManager.detectSuspiciousDevices();
+            for (const alert of suspicious) {
+                notificationManager.notifySuspiciousDevice(alert.type, alert).catch(() => {});
+            }
+        } catch (error) {
+            logger.error('Error in periodic scan:', error.message);
+        }
+    }, intervalMs);
+}
+
 // Routes
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Login page
+app.get('/login', (req, res) => {
+    if (process.env.UI_AUTH_ENABLED !== 'true' || (req.session && req.session.authenticated)) {
+        return res.redirect('/');
+    }
+    res.sendFile(path.join(__dirname, 'public', 'login.html'));
+});
+
+// Auth API
+app.post('/api/auth/login', rateLimit({ windowMs: 60 * 1000, max: 10, message: { error: 'Too many login attempts' } }), (req, res) => {
+    const { username, password } = req.body || {};
+    const configUser = process.env.UI_USERNAME || 'admin';
+    const configPass = process.env.UI_PASSWORD || '';
+
+    if (!configPass) {
+        return res.status(500).json({ error: 'UI_PASSWORD not configured' });
+    }
+
+    // Constant-time comparison to prevent timing attacks
+    const userMatch = crypto.timingSafeEqual(
+        Buffer.from(username || ''),
+        Buffer.from(configUser)
+    );
+    const passMatch = crypto.timingSafeEqual(
+        Buffer.from(password || ''),
+        Buffer.from(configPass)
+    );
+
+    if (userMatch && passMatch) {
+        req.session.authenticated = true;
+        return res.json({ success: true });
+    }
+    return res.status(401).json({ error: 'Invalid credentials' });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+    req.session.destroy(() => {
+        res.json({ success: true });
+    });
+});
+
+app.get('/api/auth/status', (req, res) => {
+    res.json({
+        authEnabled: process.env.UI_AUTH_ENABLED === 'true',
+        authenticated: !!(req.session && req.session.authenticated)
+    });
 });
 
 // Explicit static file routes as fallback
@@ -587,8 +699,22 @@ app.get('/api/settings', (req, res) => {
             UNIFI_SITE: process.env.UNIFI_SITE,
             PORT: process.env.PORT,
             SCAN_INTERVAL: process.env.SCAN_INTERVAL || '30',
+            // Notifications
+            NOTIFICATIONS_ENABLED: process.env.NOTIFICATIONS_ENABLED || 'false',
+            PUSHOVER_TOKEN: process.env.PUSHOVER_TOKEN ? '[SET]' : '',
+            PUSHOVER_USER: process.env.PUSHOVER_USER ? '[SET]' : '',
+            PUSHOVER_PRIORITY: process.env.PUSHOVER_PRIORITY || '0',
+            PUSHOVER_SOUND: process.env.PUSHOVER_SOUND || 'default',
+            NTFY_URL: process.env.NTFY_URL || 'https://ntfy.sh',
+            NTFY_TOPIC: process.env.NTFY_TOPIC || '',
+            NTFY_TOKEN: process.env.NTFY_TOKEN ? '[SET]' : '',
+            NTFY_PRIORITY: process.env.NTFY_PRIORITY || 'default',
+            // Auth
+            UI_AUTH_ENABLED: process.env.UI_AUTH_ENABLED || 'false',
+            UI_USERNAME: process.env.UI_USERNAME || 'admin',
             // Indicate if password is set without revealing it
-            UNIFI_PASSWORD_SET: !!(process.env.UNIFI_PASSWORD && process.env.UNIFI_PASSWORD.trim() !== '')
+            UNIFI_PASSWORD_SET: !!(process.env.UNIFI_PASSWORD && process.env.UNIFI_PASSWORD.trim() !== ''),
+            UI_PASSWORD_SET: !!(process.env.UI_PASSWORD && process.env.UI_PASSWORD.trim() !== '')
         };
         res.json(settings);
     } catch (error) {
@@ -665,6 +791,16 @@ app.post('/api/settings', mutationLimiter, (req, res) => {
         
         // Update UniFi controller configuration
         unifiController.updateConfiguration();
+
+        // Hot-reload scan interval if it changed (Feature 12)
+        if (unifiController.isConfigured()) {
+            const newIntervalMs = (parseInt(process.env.SCAN_INTERVAL) || 30) * 1000;
+            startScanInterval(newIntervalMs);
+            logger.info(`Scan interval restarted at ${newIntervalMs / 1000}s`);
+        }
+
+        // Hot-reload notification config
+        notificationManager.updateConfig();
         
         logger.info('Settings updated successfully and .env file created/updated');
         
@@ -756,6 +892,128 @@ app.post('/api/test-settings', async (req, res) => {
     }
 });
 
+// ── Device meta (naming / tagging — Feature 8) ─────────────────────────────
+app.patch('/api/devices/:mac', validateMac, async (req, res) => {
+    try {
+        const { custom_name, tags, note } = req.body;
+        await dbManager.updateDeviceMeta(req.params.mac, { custom_name, tags, note });
+        res.json({ success: true });
+    } catch (error) {
+        logger.error('Error updating device meta:', error.message);
+        res.status(500).json({ error: 'Failed to update device' });
+    }
+});
+
+// ── Device history (Feature 7) ──────────────────────────────────────────────
+app.get('/api/devices/:mac/history', validateMac, async (req, res) => {
+    try {
+        const limit = Math.min(parseInt(req.query.limit) || 100, 500);
+        const history = dbManager.getDeviceHistory(req.params.mac, limit);
+        res.json(history);
+    } catch (error) {
+        logger.error('Error getting device history:', error.message);
+        res.status(500).json({ error: 'Failed to get device history' });
+    }
+});
+
+app.get('/api/devices/:mac/summary', validateMac, async (req, res) => {
+    try {
+        const summary = dbManager.getConnectionSummary(req.params.mac);
+        if (!summary) return res.status(404).json({ error: 'Device not found' });
+        res.json(summary);
+    } catch (error) {
+        logger.error('Error getting device summary:', error.message);
+        res.status(500).json({ error: 'Failed to get device summary' });
+    }
+});
+
+// ── Network topology (Feature 9) ────────────────────────────────────────────
+app.get('/api/network/topology', async (req, res) => {
+    try {
+        const topology = dbManager.getTopology();
+        res.json(topology);
+    } catch (error) {
+        logger.error('Error getting topology:', error.message);
+        res.status(500).json({ error: 'Failed to get topology' });
+    }
+});
+
+// ── Suspicious device alerts (Feature 10) ───────────────────────────────────
+app.get('/api/alerts', async (req, res) => {
+    try {
+        const alerts = dbManager.getActiveAlerts();
+        res.json(alerts);
+    } catch (error) {
+        logger.error('Error getting alerts:', error.message);
+        res.status(500).json({ error: 'Failed to get alerts' });
+    }
+});
+
+app.post('/api/alerts/:id/dismiss', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        if (isNaN(id)) return res.status(400).json({ error: 'Invalid alert ID' });
+        dbManager.dismissAlert(id);
+        res.json({ success: true });
+    } catch (error) {
+        logger.error('Error dismissing alert:', error.message);
+        res.status(500).json({ error: 'Failed to dismiss alert' });
+    }
+});
+
+// ── Notifications (push) ────────────────────────────────────────────────────
+app.post('/api/notifications/test', mutationLimiter, async (req, res) => {
+    try {
+        const results = await notificationManager.test();
+        res.json({ success: true, results });
+    } catch (error) {
+        logger.error('Error testing notifications:', error.message);
+        res.status(500).json({ error: 'Failed to test notifications' });
+    }
+});
+
+// ── Export (Feature 13) ─────────────────────────────────────────────────────
+app.get('/api/export/devices.json', async (req, res) => {
+    try {
+        const devices = dbManager.exportDevices();
+        res.setHeader('Content-Disposition', 'attachment; filename="unisentinal-devices.json"');
+        res.json(devices);
+    } catch (error) {
+        logger.error('Error exporting devices:', error.message);
+        res.status(500).json({ error: 'Failed to export devices' });
+    }
+});
+
+app.get('/api/export/devices.csv', async (req, res) => {
+    try {
+        const devices = dbManager.exportDevices();
+        if (devices.length === 0) {
+            res.setHeader('Content-Disposition', 'attachment; filename="unisentinal-devices.csv"');
+            res.setHeader('Content-Type', 'text/csv');
+            return res.send('');
+        }
+        const headers = Object.keys(devices[0]);
+        const escape = (val) => {
+            if (val == null) return '';
+            const str = String(val);
+            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                return '"' + str.replace(/"/g, '""') + '"';
+            }
+            return str;
+        };
+        const csv = [
+            headers.join(','),
+            ...devices.map(row => headers.map(h => escape(row[h])).join(','))
+        ].join('\r\n');
+        res.setHeader('Content-Disposition', 'attachment; filename="unisentinal-devices.csv"');
+        res.setHeader('Content-Type', 'text/csv');
+        res.send(csv);
+    } catch (error) {
+        logger.error('Error exporting devices as CSV:', error.message);
+        res.status(500).json({ error: 'Failed to export devices' });
+    }
+});
+
 // Logs endpoint
 app.get('/api/logs', (req, res) => {
     try {
@@ -779,21 +1037,9 @@ async function initialize() {
             // Initialize UniFi controller device tracking baseline
             await unifiController.initializeDeviceTracking();
             
-            // Scan for devices every 30 seconds (or configured interval)
+            // Scan for devices at configured interval (Feature 12 — hot-reloadable)
             const scanInterval = parseInt(process.env.SCAN_INTERVAL) * 1000 || 30000;
-            setInterval(async () => {
-                try {
-                    if (unifiController.isConfigured()) {
-                        const newDevices = await unifiController.scanForNewDevices();
-                        if (newDevices.length > 0) {
-                            await dbManager.addNewDevices(newDevices);
-                            logger.info(`Periodic scan found ${newDevices.length} new device(s)`);
-                        }
-                    }
-                } catch (error) {
-                    logger.error('Error in periodic scan:', error.message);
-                }
-            }, scanInterval);
+            startScanInterval(scanInterval);
             
             logger.info(`UniFi Sentinel initialized successfully (scan interval: ${scanInterval/1000}s)`);
         } else {

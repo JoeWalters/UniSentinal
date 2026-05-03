@@ -26,11 +26,22 @@
                     <button id="settingsBtn" class="btn-icon" title="Settings">
                         <i class="fas fa-cog"></i>
                     </button>
+                    <button id="logoutBtn" class="btn-icon" title="Sign Out" style="display:none;">
+                        <i class="fas fa-sign-out-alt"></i>
+                    </button>
                 </div>
             </div>
         </header>
 
         <main>
+            <!-- Alert Banner -->
+            <div id="alertBanner" class="alert-banner" style="display:none;">
+                <i class="fas fa-exclamation-triangle"></i>
+                <span id="alertBannerText">Suspicious device activity detected</span>
+                <button class="btn btn-small btn-warning" id="viewAlertsBtn">View Alerts</button>
+                <button class="btn-icon alert-dismiss-btn" id="dismissAlertBanner" title="Dismiss"><i class="fas fa-times"></i></button>
+            </div>
+
             <!-- Tab Navigation -->
             <div class="tab-navigation">
                 <button class="tab-button active" data-tab="monitoring">
@@ -38,6 +49,9 @@
                 </button>
                 <button class="tab-button" data-tab="parental">
                     <i class="fas fa-user-shield"></i> Parental Controls
+                </button>
+                <button class="tab-button" data-tab="topology">
+                    <i class="fas fa-project-diagram"></i> Network Map
                 </button>
             </div>
 
@@ -307,11 +321,34 @@
             </div>
         </div>
 
+        <!-- Network Map / Topology Tab -->
+        <div id="topology-tab" class="tab-content">
+            <div class="topology-section">
+                <div class="topology-header">
+                    <h2><i class="fas fa-project-diagram"></i> Network Map</h2>
+                    <div class="topology-actions">
+                        <button id="refreshTopologyBtn" class="btn btn-secondary">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                        <a href="/api/export/devices.csv" class="btn btn-secondary" download>
+                            <i class="fas fa-file-csv"></i> Export CSV
+                        </a>
+                        <a href="/api/export/devices.json" class="btn btn-secondary" download>
+                            <i class="fas fa-file-code"></i> Export JSON
+                        </a>
+                    </div>
+                </div>
+                <div id="topologyGrid" class="topology-grid">
+                    <!-- AP groups populated by JS -->
+                </div>
+            </div>
+        </div>
+
         </main>
 
         <footer>
             <p>Last scan: <span id="lastUpdated">-</span></p>
-            <p>Monitoring for new devices every 30 seconds</p>
+            <p>Monitoring for new devices every <span id="footerScanInterval">30</span> seconds</p>
             <p class="version-info">Version: <span id="versionInfo">-</span></p>
         </footer>
     </div>
@@ -325,8 +362,35 @@
                     <i class="fas fa-times"></i>
                 </button>
             </div>
+            <div class="management-tabs" style="padding: 0 1.5rem;">
+                <button class="management-tab active" data-modal-tab="info">Info</button>
+                <button class="management-tab" data-modal-tab="history">History</button>
+                <button class="management-tab" data-modal-tab="edit">Edit</button>
+            </div>
             <div class="modal-body" id="modalBody">
                 <!-- Device details will be populated here -->
+            </div>
+            <div id="modalHistoryBody" class="modal-body" style="display:none;">
+                <div id="deviceHistoryContent"><i class="fas fa-spinner fa-spin"></i> Loading…</div>
+            </div>
+            <div id="modalEditBody" class="modal-body" style="display:none;">
+                <div class="settings-grid">
+                    <div class="setting-item setting-item-full">
+                        <label for="editCustomName">Custom Name</label>
+                        <input type="text" id="editCustomName" placeholder="e.g. Living Room TV">
+                    </div>
+                    <div class="setting-item setting-item-full">
+                        <label for="editTags">Tags <small>(comma-separated)</small></label>
+                        <input type="text" id="editTags" placeholder="e.g. iot, trusted, kids">
+                    </div>
+                    <div class="setting-item setting-item-full">
+                        <label for="editNote">Note</label>
+                        <textarea id="editNote" rows="3" placeholder="Optional notes about this device" style="width:100%;resize:vertical;padding:0.5rem;border-radius:6px;border:1px solid var(--border-color);background:var(--input-bg);color:var(--text-color);"></textarea>
+                    </div>
+                </div>
+                <div style="margin-top:1rem;">
+                    <button class="btn btn-primary" id="saveDeviceMetaBtn"><i class="fas fa-save"></i> Save</button>
+                </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" id="modalCloseBtn">Close</button>
@@ -385,6 +449,95 @@
                         <div class="setting-item">
                             <label for="scanInterval">Scan Interval (seconds)</label>
                             <input type="number" id="scanInterval" value="30" placeholder="30" min="10" max="300">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <h4><i class="fas fa-bell"></i> Push Notifications</h4>
+                    <div class="settings-grid">
+                        <div class="setting-item setting-item-full">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="notificationsEnabled">
+                                <span>Enable push notifications</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="notification-providers">
+                        <details class="provider-details">
+                            <summary><i class="fas fa-mobile-alt"></i> Pushover</summary>
+                            <div class="settings-grid">
+                                <div class="setting-item">
+                                    <label for="pushoverToken">API Token</label>
+                                    <input type="password" id="pushoverToken" placeholder="Leave blank to keep existing">
+                                </div>
+                                <div class="setting-item">
+                                    <label for="pushoverUser">User/Group Key</label>
+                                    <input type="password" id="pushoverUser" placeholder="Leave blank to keep existing">
+                                </div>
+                                <div class="setting-item">
+                                    <label for="pushoverPriority">Priority (-2 to 2)</label>
+                                    <input type="number" id="pushoverPriority" value="0" min="-2" max="2">
+                                </div>
+                                <div class="setting-item">
+                                    <label for="pushoverSound">Sound</label>
+                                    <input type="text" id="pushoverSound" value="default" placeholder="default">
+                                </div>
+                            </div>
+                        </details>
+                        <details class="provider-details">
+                            <summary><i class="fas fa-paper-plane"></i> ntfy</summary>
+                            <div class="settings-grid">
+                                <div class="setting-item">
+                                    <label for="ntfyUrl">Server URL</label>
+                                    <input type="text" id="ntfyUrl" value="https://ntfy.sh" placeholder="https://ntfy.sh">
+                                </div>
+                                <div class="setting-item">
+                                    <label for="ntfyTopic">Topic</label>
+                                    <input type="text" id="ntfyTopic" placeholder="my-unisentinal-alerts">
+                                </div>
+                                <div class="setting-item">
+                                    <label for="ntfyToken">Token (optional)</label>
+                                    <input type="password" id="ntfyToken" placeholder="Leave blank to keep existing">
+                                </div>
+                                <div class="setting-item">
+                                    <label for="ntfyPriority">Priority</label>
+                                    <select id="ntfyPriority" class="filter-select">
+                                        <option value="min">Min</option>
+                                        <option value="low">Low</option>
+                                        <option value="default" selected>Default</option>
+                                        <option value="high">High</option>
+                                        <option value="urgent">Urgent</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+                    <div class="notification-test-row">
+                        <button class="btn btn-info btn-small" id="testNotificationsBtn">
+                            <i class="fas fa-bell"></i> Send Test Notification
+                        </button>
+                        <span id="notificationTestResult" class="test-result-text"></span>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <h4><i class="fas fa-lock"></i> Web UI Authentication</h4>
+                    <p class="settings-hint">When enabled, the UI requires a username and password. Disabled by default.</p>
+                    <div class="settings-grid">
+                        <div class="setting-item setting-item-full">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="uiAuthEnabled">
+                                <span>Enable Web UI login</span>
+                            </label>
+                        </div>
+                        <div class="setting-item">
+                            <label for="uiUsername">Username</label>
+                            <input type="text" id="uiUsername" value="admin" placeholder="admin">
+                        </div>
+                        <div class="setting-item">
+                            <label for="uiPassword">Password</label>
+                            <input type="password" id="uiPassword" placeholder="Enter new password">
                         </div>
                     </div>
                 </div>
