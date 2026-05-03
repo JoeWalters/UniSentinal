@@ -262,6 +262,7 @@ class UniFiSentinel {
             if (!response.ok) throw new Error('Failed to enable watch');
             this.showNotification('Watch enabled — you\'ll be notified each time this device joins the network', 'success');
             await this.loadDevices();
+            await this.loadAcknowledgedDevices();
         } catch (error) {
             console.error('Error enabling watch:', error);
             this.showError('Failed to enable watch');
