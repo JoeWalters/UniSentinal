@@ -1,9 +1,11 @@
 class UniFiSentinel {
     constructor() {
         this.devices = [];
+        this.acknowledgedDevices = [];
         this.selectedDevice = null;
         this.autoRefreshInterval = null;
         this.statusRefreshInterval = null;
+        this.currentModalTab = 'info';
         this.init();
     }
 
@@ -26,6 +28,8 @@ class UniFiSentinel {
         this.checkStatus();
         this.loadVersion();
         this.startAutoRefresh();
+        this.checkAuthStatus();
+        this.loadAlerts();
     }
 
     bindEvents() {
@@ -41,6 +45,28 @@ class UniFiSentinel {
         // Known devices accordion
         document.getElementById('knownDevicesToggle').addEventListener('click', () => this.toggleKnownDevices());
 
+        // New-devices filter bar
+        document.getElementById('deviceSearchInput').addEventListener('input', () => this.applyNewDeviceFilters());
+        document.getElementById('deviceSearchClear').addEventListener('click', () => {
+            document.getElementById('deviceSearchInput').value = '';
+            this.applyNewDeviceFilters();
+        });
+        document.getElementById('filterConnection').addEventListener('change', () => this.applyNewDeviceFilters());
+        document.getElementById('filterWatch').addEventListener('change', () => this.applyNewDeviceFilters());
+        document.getElementById('deviceFilterClearAll').addEventListener('click', () => this.clearNewDeviceFilters());
+
+        // Known-devices filter bar
+        document.getElementById('knownSearchInput').addEventListener('input', () => this.applyKnownDeviceFilters());
+        document.getElementById('knownSearchClear').addEventListener('click', () => {
+            document.getElementById('knownSearchInput').value = '';
+            this.applyKnownDeviceFilters();
+        });
+        document.getElementById('knownFilterConnection').addEventListener('change', () => this.applyKnownDeviceFilters());
+        document.getElementById('knownFilterWatch').addEventListener('change', () => this.applyKnownDeviceFilters());
+        document.getElementById('knownFilterClearAll').addEventListener('click', () => this.clearKnownDeviceFilters());
+        document.getElementById('deviceSort')?.addEventListener('change', () => this.applyNewDeviceFilters());
+        document.getElementById('knownSort')?.addEventListener('change', () => this.applyKnownDeviceFilters());
+
         // Tab navigation events
         document.querySelectorAll('.tab-button').forEach(button => {
             button.addEventListener('click', (e) => {
@@ -48,6 +74,32 @@ class UniFiSentinel {
                 this.switchTab(tabName);
             });
         });
+
+        // Device modal tab switching
+        document.querySelectorAll('[data-modal-tab]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const tab = e.target.getAttribute('data-modal-tab');
+                this.switchDeviceModalTab(tab);
+            });
+        });
+
+        // Save device meta (name/tags/note)
+        document.getElementById('saveDeviceMetaBtn').addEventListener('click', () => this.saveDeviceMeta());
+
+        // Topology refresh
+        const refreshTopologyBtn = document.getElementById('refreshTopologyBtn');
+        if (refreshTopologyBtn) {
+            refreshTopologyBtn.addEventListener('click', () => this.loadTopology());
+        }
+
+        // Alert banner
+
+
+        // Logout
+        document.getElementById('logoutBtn')?.addEventListener('click', () => this.logout());
+
+        // Notification test button
+        document.getElementById('testNotificationsBtn')?.addEventListener('click', () => this.testNotifications());
 
         // Parental controls events
         const addDeviceBtn = document.getElementById('addDeviceBtn');
@@ -72,6 +124,18 @@ class UniFiSentinel {
         document.getElementById('saveSettingsBtn').addEventListener('click', () => this.saveSettings());
         document.getElementById('testSettingsBtn').addEventListener('click', () => this.testSettings());
         document.getElementById('refreshLogsBtn').addEventListener('click', () => this.loadLogs());
+
+        // Settings sidebar navigation
+        document.querySelectorAll('.settings-nav-item').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tab = btn.dataset.settingsTab;
+                document.querySelectorAll('.settings-nav-item').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.settings-panel').forEach(p => p.classList.remove('active'));
+                btn.classList.add('active');
+                const panel = document.querySelector(`.settings-panel[data-panel="${tab}"]`);
+                if (panel) panel.classList.add('active');
+            });
+        });
 
         // Add device modal events
         const closeAddDeviceModal = document.getElementById('closeAddDeviceModal');
@@ -147,7 +211,7 @@ class UniFiSentinel {
             if (!response.ok) throw new Error('Failed to fetch devices');
             
             this.devices = await response.json();
-            this.renderDevices();
+            this.applyNewDeviceFilters();
             this.updateStats();
             this.updateLastUpdated();
         } catch (error) {
@@ -209,6 +273,7 @@ class UniFiSentinel {
             if (!response.ok) throw new Error('Failed to enable watch');
             this.showNotification('Watch enabled — you\'ll be notified each time this device joins the network', 'success');
             await this.loadDevices();
+            await this.loadAcknowledgedDevices();
         } catch (error) {
             console.error('Error enabling watch:', error);
             this.showError('Failed to enable watch');
@@ -245,8 +310,8 @@ class UniFiSentinel {
         try {
             const response = await fetch('/api/devices/acknowledged');
             if (!response.ok) throw new Error('Failed to fetch acknowledged devices');
-            const acknowledged = await response.json();
-            this.renderAcknowledgedDevices(acknowledged);
+            this.acknowledgedDevices = await response.json();
+            this.applyKnownDeviceFilters();
         } catch (error) {
             console.error('Error loading acknowledged devices:', error);
         }
@@ -256,12 +321,26 @@ class UniFiSentinel {
         const grid = document.getElementById('knownDevicesGrid');
         const noKnown = document.getElementById('noKnownDevices');
         const badge = document.getElementById('knownDevicesCount');
+        const filterCount = document.getElementById('knownFilterCount');
 
-        badge.textContent = devices.length;
+        // Badge always shows total acknowledged count
+        badge.textContent = this.acknowledgedDevices.length;
+
+        const isFiltered = devices.length !== this.acknowledgedDevices.length;
+        if (filterCount) {
+            filterCount.textContent = isFiltered
+                ? `Showing ${devices.length} of ${this.acknowledgedDevices.length}`
+                : (this.acknowledgedDevices.length > 0 ? `${this.acknowledgedDevices.length} device${this.acknowledgedDevices.length !== 1 ? 's' : ''}` : '');
+        }
 
         if (devices.length === 0) {
             grid.style.display = 'none';
             noKnown.style.display = 'block';
+            if (this.acknowledgedDevices.length === 0) {
+                noKnown.innerHTML = `<i class="fas fa-inbox"></i><p>No acknowledged devices yet</p>`;
+            } else {
+                noKnown.innerHTML = `<i class="fas fa-filter"></i><p>No devices match your filters</p><small>Try adjusting or clearing the filters above</small>`;
+            }
             return;
         }
 
@@ -281,12 +360,20 @@ class UniFiSentinel {
             const acknowledgedAt = device.acknowledged_at
                 ? new Date(device.acknowledged_at).toLocaleDateString()
                 : 'Unknown';
+            const tagsHtml = device.tags
+                ? device.tags.split(',').map(t => `<span class="device-tag">${this.escapeHtml(t.trim())}</span>`).join('')
+                : '';
 
             return `
                 <div class="device-card ${colorClass} known-device-card" data-mac="${eMac}">
                     <div class="device-header">
                         <div class="device-info">
                             <h3>${displayName}${isWatched ? ' <span class="watch-badge" title="Watching this device"><i class="fas fa-eye"></i></span>' : ''}</h3>
+                            ${tagsHtml ? `<div class="device-tags">${tagsHtml}</div>` : ''}
+                        </div>
+                        <div class="device-online-badge ${device.is_online ? 'online' : 'offline'}">
+                            <span class="device-online-dot"></span>
+                            ${device.is_online ? 'Online' : 'Offline'}
                         </div>
                     </div>
                     <div class="device-details">
@@ -304,6 +391,9 @@ class UniFiSentinel {
                         </div>
                     </div>
                     <div class="device-actions">
+                        <button class="btn btn-outline btn-small known-details-btn" data-mac="${eMac}">
+                            <i class="fas fa-info-circle"></i> Details
+                        </button>
                         <button class="btn ${watchClass} btn-small known-watch-btn" data-mac="${eMac}" data-watching="${isWatched}">
                             <i class="fas ${watchIcon}"></i> ${watchLabel}
                         </button>
@@ -314,6 +404,19 @@ class UniFiSentinel {
                 </div>
             `;
         }).join('');
+
+        // Bind card click (open details modal)
+        grid.querySelectorAll('.known-device-card').forEach((card, index) => {
+            card.addEventListener('click', () => this.showDeviceModal(devices[index]));
+        });
+
+        // Bind details buttons
+        grid.querySelectorAll('.known-details-btn').forEach((btn, index) => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.showDeviceModal(devices[index]);
+            });
+        });
 
         // Bind events
         grid.querySelectorAll('.known-watch-btn').forEach(btn => {
@@ -336,6 +439,15 @@ class UniFiSentinel {
                 this.forgetDevice(mac);
             });
         });
+
+        // Bind tag click — filter by tag in known devices
+        grid.querySelectorAll('.device-tag').forEach(tag => {
+            tag.addEventListener('click', (e) => {
+                e.stopPropagation();
+                document.getElementById('knownSearchInput').value = tag.textContent.trim();
+                this.applyKnownDeviceFilters();
+            });
+        });
     }
 
     toggleKnownDevices() {
@@ -348,7 +460,7 @@ class UniFiSentinel {
             content.style.opacity = '0';
             icon.style.transform = 'rotate(0deg)';
         } else {
-            content.style.maxHeight = content.scrollHeight + 'px';
+            content.style.maxHeight = 'none';
             content.style.opacity = '1';
             icon.style.transform = 'rotate(180deg)';
             this.loadAcknowledgedDevices();
@@ -443,14 +555,119 @@ class UniFiSentinel {
         }
     }
 
-    renderDevices() {
+    // ── Filter helpers ────────────────────────────────────────────
+
+    _getFilterValues(searchId, connectionId, watchId) {
+        const search = (document.getElementById(searchId)?.value || '').trim().toLowerCase();
+        const connection = document.getElementById(connectionId)?.value || 'all';
+        const watch = document.getElementById(watchId)?.value || 'all';
+        return { search, connection, watch };
+    }
+
+    _filterDevices(devices, { search, connection, watch }) {
+        return devices.filter(d => {
+            if (search) {
+                const haystack = [
+                    d.hostname, d.name, d.alias, d.ip, d.mac, d.vendor, d.note
+                ].filter(Boolean).join(' ').toLowerCase();
+                if (!haystack.includes(search)) return false;
+            }
+            if (connection === 'wired' && !d.is_wired) return false;
+            if (connection === 'wireless' && d.is_wired) return false;
+            if (watch === 'watched' && !d.watch_connection) return false;
+            if (watch === 'unwatched' && d.watch_connection) return false;
+            return true;
+        });
+    }
+
+    _updateClearBtn(inputId, clearBtnId) {
+        const val = document.getElementById(inputId)?.value || '';
+        const btn = document.getElementById(clearBtnId);
+        if (btn) btn.style.display = val.length > 0 ? 'inline-flex' : 'none';
+    }
+
+    _sortDevices(devices, sortBy) {
+        const sorted = [...devices];
+        switch (sortBy) {
+            case 'name':
+                return sorted.sort((a, b) =>
+                    this.getDeviceDisplayName(a).toLowerCase().localeCompare(
+                        this.getDeviceDisplayName(b).toLowerCase()));
+            case 'ip':
+                return sorted.sort((a, b) => {
+                    const ia = (a.ip || '0.0.0.0').split('.').map(n => parseInt(n, 10) || 0);
+                    const ib = (b.ip || '0.0.0.0').split('.').map(n => parseInt(n, 10) || 0);
+                    for (let i = 0; i < 4; i++) { if (ia[i] !== ib[i]) return ia[i] - ib[i]; }
+                    return 0;
+                });
+            case 'online':
+                return sorted.sort((a, b) => (b.is_online ? 1 : 0) - (a.is_online ? 1 : 0));
+            case 'last_seen':
+            default: {
+                const ts = v => {
+                    if (!v) return 0;
+                    return typeof v === 'number' ? v * 1000 : new Date(v).getTime();
+                };
+                return sorted.sort((a, b) => ts(b.last_seen) - ts(a.last_seen));
+            }
+        }
+    }
+
+    applyNewDeviceFilters() {
+        this._updateClearBtn('deviceSearchInput', 'deviceSearchClear');
+        const filters = this._getFilterValues('deviceSearchInput', 'filterConnection', 'filterWatch');
+        const filtered = this._filterDevices(this.devices, filters);
+        const sortBy = document.getElementById('deviceSort')?.value || 'last_seen';
+        this.renderDevices(this._sortDevices(filtered, sortBy));
+    }
+
+    clearNewDeviceFilters() {
+        document.getElementById('deviceSearchInput').value = '';
+        document.getElementById('filterConnection').value = 'all';
+        document.getElementById('filterWatch').value = 'all';
+        const sortEl = document.getElementById('deviceSort');
+        if (sortEl) sortEl.value = 'last_seen';
+        this.applyNewDeviceFilters();
+    }
+
+    applyKnownDeviceFilters() {
+        this._updateClearBtn('knownSearchInput', 'knownSearchClear');
+        const filters = this._getFilterValues('knownSearchInput', 'knownFilterConnection', 'knownFilterWatch');
+        const filtered = this._filterDevices(this.acknowledgedDevices, filters);
+        const sortBy = document.getElementById('knownSort')?.value || 'last_seen';
+        this.renderAcknowledgedDevices(this._sortDevices(filtered, sortBy));
+    }
+
+    clearKnownDeviceFilters() {
+        document.getElementById('knownSearchInput').value = '';
+        document.getElementById('knownFilterConnection').value = 'all';
+        document.getElementById('knownFilterWatch').value = 'all';
+        const sortEl = document.getElementById('knownSort');
+        if (sortEl) sortEl.value = 'last_seen';
+        this.applyKnownDeviceFilters();
+    }
+
+    // ─────────────────────────────────────────────────────────────
+
+    renderDevices(filteredDevices) {
+        const devices = filteredDevices !== undefined ? filteredDevices : this.devices;
         const grid = document.getElementById('devicesGrid');
         const noDevices = document.getElementById('noDevices');
         const deviceCount = document.getElementById('deviceCount');
+        const filterCount = document.getElementById('deviceFilterCount');
 
+        // Total badge always shows raw count
         deviceCount.textContent = this.devices.length;
 
-        // Show/hide acknowledge all button based on device count
+        // Filter result count
+        const isFiltered = devices.length !== this.devices.length;
+        if (filterCount) {
+            filterCount.textContent = isFiltered
+                ? `Showing ${devices.length} of ${this.devices.length}`
+                : (this.devices.length > 0 ? `${this.devices.length} device${this.devices.length !== 1 ? 's' : ''}` : '');
+        }
+
+        // Show/hide acknowledge all button based on total count
         const acknowledgeAllBtn = document.getElementById('acknowledgeAllBtn');
         if (this.devices.length > 0) {
             acknowledgeAllBtn.style.display = 'inline-block';
@@ -458,29 +675,39 @@ class UniFiSentinel {
             acknowledgeAllBtn.style.display = 'none';
         }
 
-        if (this.devices.length === 0) {
+        if (devices.length === 0) {
             grid.style.display = 'none';
-            // Only show the "no devices" message if we're not in configuration mode
-            // The configuration prompt will be shown by checkStatus() if needed
-            this.showNoDevicesMessage();
+            if (this.devices.length === 0) {
+                this.showNoDevicesMessage();
+            } else {
+                const noDevicesEl = document.getElementById('noDevices');
+                if (noDevicesEl) {
+                    noDevicesEl.style.display = 'block';
+                    noDevicesEl.innerHTML = `
+                        <i class="fas fa-filter"></i>
+                        <p>No devices match your filters</p>
+                        <small>Try adjusting or clearing the filters above</small>
+                    `;
+                }
+            }
             return;
         }
 
         grid.style.display = 'grid';
         noDevices.style.display = 'none';
 
-        grid.innerHTML = this.devices.map(device => this.createDeviceCard(device)).join('');
+        grid.innerHTML = devices.map(device => this.createDeviceCard(device)).join('');
 
         // Bind click events for device cards
         grid.querySelectorAll('.device-card').forEach((card, index) => {
-            card.addEventListener('click', () => this.showDeviceModal(this.devices[index]));
+            card.addEventListener('click', () => this.showDeviceModal(devices[index]));
         });
 
         // Bind acknowledge buttons
         grid.querySelectorAll('.acknowledge-btn').forEach((btn, index) => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                this.acknowledgeDevice(this.devices[index].mac);
+                this.acknowledgeDevice(devices[index].mac);
             });
         });
 
@@ -490,28 +717,30 @@ class UniFiSentinel {
                 e.stopPropagation();
                 const isWatching = btn.getAttribute('data-watching') === 'true';
                 if (isWatching) {
-                    this.unwatchDevice(this.devices[index].mac);
+                    this.unwatchDevice(devices[index].mac);
                 } else {
-                    this.watchDevice(this.devices[index].mac);
+                    this.watchDevice(devices[index].mac);
                 }
+            });
+        });
+
+        // Bind tag click — filter by tag
+        grid.querySelectorAll('.device-tag').forEach(tag => {
+            tag.addEventListener('click', (e) => {
+                e.stopPropagation();
+                document.getElementById('deviceSearchInput').value = tag.textContent.trim();
+                this.applyNewDeviceFilters();
             });
         });
     }
 
     getDeviceDisplayName(device) {
-        // Priority order: hostname, name/alias, IP, or "Unk"
-        if (device.hostname && device.hostname.trim()) {
-            return device.hostname.trim();
-        }
-        if (device.name && device.name.trim()) {
-            return device.name.trim();
-        }
-        if (device.alias && device.alias.trim()) {
-            return device.alias.trim();
-        }
-        if (device.ip && device.ip.trim()) {
-            return device.ip.trim();
-        }
+        // Priority: custom_name > hostname > name/alias > IP > MAC tail
+        if (device.custom_name && device.custom_name.trim()) return device.custom_name.trim();
+        if (device.hostname && device.hostname.trim()) return device.hostname.trim();
+        if (device.name && device.name.trim()) return device.name.trim();
+        if (device.alias && device.alias.trim()) return device.alias.trim();
+        if (device.ip && device.ip.trim()) return device.ip.trim();
         return 'Unk';
     }
 
@@ -549,12 +778,20 @@ class UniFiSentinel {
         const watchLabel = isWatched ? 'Unwatch' : 'Watch';
         const watchIcon = isWatched ? 'fa-eye-slash' : 'fa-eye';
         const watchClass = isWatched ? 'btn-warning' : 'btn-outline';
+        const tagsHtml = device.tags
+            ? device.tags.split(',').map(t => `<span class="device-tag">${this.escapeHtml(t.trim())}</span>`).join('')
+            : '';
 
         return `
             <div class="device-card ${colorClass}" data-mac="${eMac}">
                 <div class="device-header">
                     <div class="device-info">
                         <h3>${displayName}${isWatched ? ' <span class="watch-badge" title="Watching this device"><i class="fas fa-eye"></i></span>' : ''}</h3>
+                        ${tagsHtml ? `<div class="device-tags">${tagsHtml}</div>` : ''}
+                    </div>
+                    <div class="device-online-badge ${device.is_online ? 'online' : 'offline'}">
+                        <span class="device-online-dot"></span>
+                        ${device.is_online ? 'Online' : 'Offline'}
                     </div>
                 </div>
                 
@@ -590,16 +827,130 @@ class UniFiSentinel {
         const modalBody = document.getElementById('modalBody');
 
         modalBody.innerHTML = this.createDeviceDetails(device);
+        // Reset to info tab
+        this.switchDeviceModalTab('info');
+        // Pre-fill edit fields
+        document.getElementById('editCustomName').value = device.custom_name || '';
+        document.getElementById('editTags').value = device.tags || '';
+        document.getElementById('editNote').value = device.note || '';
+        // Pre-fill alert config
+        const watchConnectEl = document.getElementById('editWatchConnect');
+        const watchOfflineEl = document.getElementById('editWatchOffline');
+        if (watchConnectEl) watchConnectEl.checked = !!device.watch_connection;
+        if (watchOfflineEl) watchOfflineEl.checked = !!device.watch_offline;
+        // Show/hide acknowledge button depending on whether device is already known
+        const ackBtn = document.getElementById('modalAcknowledgeBtn');
+        if (ackBtn) ackBtn.style.display = device.acknowledged ? 'none' : '';
         modal.style.display = 'block';
+    }
+
+    switchDeviceModalTab(tab) {
+        this.currentModalTab = tab;
+        document.querySelectorAll('[data-modal-tab]').forEach(btn => {
+            btn.classList.toggle('active', btn.getAttribute('data-modal-tab') === tab);
+        });
+        document.getElementById('modalBody').style.display = tab === 'info' ? 'block' : 'none';
+        document.getElementById('modalHistoryBody').style.display = tab === 'history' ? 'block' : 'none';
+        document.getElementById('modalEditBody').style.display = tab === 'edit' ? 'block' : 'none';
+
+        if (tab === 'history' && this.selectedDevice) {
+            this.loadDeviceHistory(this.selectedDevice.mac);
+        }
+    }
+
+    async loadDeviceHistory(mac) {
+        const container = document.getElementById('deviceHistoryContent');
+        container.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading…';
+        try {
+            const [historyResp, summaryResp] = await Promise.all([
+                fetch(`/api/devices/${encodeURIComponent(mac)}/history?limit=50`),
+                fetch(`/api/devices/${encodeURIComponent(mac)}/summary`)
+            ]);
+            const history = historyResp.ok ? await historyResp.json() : [];
+            const summary = summaryResp.ok ? await summaryResp.json() : null;
+
+            let html = '';
+            if (summary) {
+                html += `<div class="history-summary">
+                    <div class="detail-row"><span class="detail-label">First Seen:</span><span class="detail-value">${summary.first_seen ? new Date(summary.first_seen).toLocaleString() : 'N/A'}</span></div>
+                    <div class="detail-row"><span class="detail-label">Last Seen:</span><span class="detail-value">${summary.last_seen ? new Date(summary.last_seen).toLocaleString() : 'N/A'}</span></div>
+                    <div class="detail-row"><span class="detail-label">Total Connections:</span><span class="detail-value">${summary.total_connections}</span></div>
+                </div>`;
+            }
+
+            if (history.length === 0) {
+                html += '<p style="color:var(--text-muted);text-align:center;margin-top:1rem;">No connection events recorded yet</p>';
+            } else {
+                html += '<div class="history-events">' + history.map(e => `
+                    <div class="history-event-item">
+                        <i class="fas fa-${e.event_type === 'connected' ? 'plug' : 'unlink'} history-event-icon ${e.event_type}"></i>
+                        <div class="history-event-detail">
+                            <span class="history-event-type">${e.event_type === 'connected' ? 'Connected' : 'Disconnected'}</span>
+                            ${e.ip ? `<span class="history-event-meta">IP: ${this.escapeHtml(e.ip)}</span>` : ''}
+                            ${e.ap_mac ? `<span class="history-event-meta">AP: ${this.escapeHtml(e.ap_mac)}</span>` : ''}
+                        </div>
+                        <span class="history-event-time">${new Date(e.timestamp).toLocaleString()}</span>
+                    </div>
+                `).join('') + '</div>';
+            }
+            container.innerHTML = html;
+        } catch (err) {
+            container.innerHTML = '<p style="color:#e74c3c;">Failed to load history</p>';
+        }
+    }
+
+    async saveDeviceMeta() {
+        if (!this.selectedDevice) return;
+        const mac = this.selectedDevice.mac;
+        const custom_name = document.getElementById('editCustomName').value.trim();
+        const tags = document.getElementById('editTags').value.trim();
+        const note = document.getElementById('editNote').value.trim();
+        const watch_connection = document.getElementById('editWatchConnect')?.checked ?? !!this.selectedDevice.watch_connection;
+        const watch_offline = document.getElementById('editWatchOffline')?.checked ?? !!this.selectedDevice.watch_offline;
+        try {
+            const resp = await fetch(`/api/devices/${encodeURIComponent(mac)}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    custom_name: custom_name || null,
+                    tags: tags || null,
+                    note: note || null,
+                    watch_connection,
+                    watch_offline
+                })
+            });
+            if (!resp.ok) throw new Error('Failed to save');
+            this.showNotification('Device info saved', 'success');
+            // Update local device data
+            this.selectedDevice.custom_name = custom_name || null;
+            this.selectedDevice.tags = tags || null;
+            this.selectedDevice.note = note || null;
+            this.selectedDevice.watch_connection = watch_connection;
+            this.selectedDevice.watch_offline = watch_offline;
+            // Refresh device lists
+            await this.loadDevices();
+            await this.loadAcknowledgedDevices();
+        } catch (err) {
+            this.showError('Failed to save device info');
+        }
     }
 
     createDeviceDetails(device) {
         const formatBytes = (bytes) => {
-            if (bytes === 0) return '0 B';
+            if (!bytes || bytes === 0) return '0 B';
             const k = 1024;
             const sizes = ['B', 'KB', 'MB', 'GB'];
             const i = Math.floor(Math.log(bytes) / Math.log(k));
             return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        };
+        const parseDate = (val) => {
+            if (!val) return null;
+            const d = new Date(val);
+            if (!isNaN(d)) return d;
+            // Handle legacy unix-seconds stored as numeric string
+            const n = Number(val);
+            if (!isNaN(n) && n > 0) return new Date(n < 1e10 ? n * 1000 : n);
+            return null;
         };
 
         const eHostname = this.escapeHtml(device.hostname || 'Unknown Device');
@@ -655,16 +1006,36 @@ class UniFiSentinel {
                     </div>
                     <div class="detail-row">
                         <span class="detail-label">First Seen:</span>
-                        <span class="detail-value">${new Date(device.first_seen).toLocaleString()}</span>
+                        <span class="detail-value">${parseDate(device.first_seen)?.toLocaleString() ?? 'N/A'}</span>
                     </div>
                     <div class="detail-row">
                         <span class="detail-label">Last Seen:</span>
-                        <span class="detail-value">${new Date(device.last_seen).toLocaleString()}</span>
+                        <span class="detail-value">${parseDate(device.last_seen)?.toLocaleString() ?? 'N/A'}</span>
                     </div>
                     <div class="detail-row">
                         <span class="detail-label">Detected by Sentinel:</span>
-                        <span class="detail-value">${new Date(device.detected_at).toLocaleString()}</span>
+                        <span class="detail-value">${parseDate(device.detected_at)?.toLocaleString() ?? 'N/A'}</span>
                     </div>
+                    ${device.os_name ? `
+                    <div class="detail-row">
+                        <span class="detail-label">OS:</span>
+                        <span class="detail-value">${this.escapeHtml(device.os_name)}</span>
+                    </div>` : ''}
+                    ${device.custom_name ? `
+                    <div class="detail-row">
+                        <span class="detail-label">Custom Name:</span>
+                        <span class="detail-value">${this.escapeHtml(device.custom_name)}</span>
+                    </div>` : ''}
+                    ${device.tags ? `
+                    <div class="detail-row">
+                        <span class="detail-label">Tags:</span>
+                        <span class="detail-value">${device.tags.split(',').map(t => `<span class="device-tag">${this.escapeHtml(t.trim())}</span>`).join(' ')}</span>
+                    </div>` : ''}
+                    ${device.note ? `
+                    <div class="detail-row">
+                        <span class="detail-label">Note:</span>
+                        <span class="detail-value" style="white-space:pre-wrap;">${this.escapeHtml(device.note)}</span>
+                    </div>` : ''}
                 </div>
             </div>
 
@@ -673,11 +1044,11 @@ class UniFiSentinel {
                     text-align: center;
                     margin-bottom: 25px;
                     padding-bottom: 20px;
-                    border-bottom: 1px solid #e9ecef;
+                    border-bottom: 1px solid var(--border-color);
                 }
                 
                 .device-summary h4 {
-                    color: #2c3e50;
+                    color: var(--text-primary);
                     margin-bottom: 8px;
                 }
                 
@@ -691,16 +1062,16 @@ class UniFiSentinel {
                     grid-template-columns: 1fr 1fr;
                     gap: 15px;
                     padding: 8px 0;
-                    border-bottom: 1px solid #f8f9fa;
+                    border-bottom: 1px solid var(--border-color);
                 }
                 
                 .detail-row .detail-label {
                     font-weight: 600;
-                    color: #7f8c8d;
+                    color: var(--text-secondary);
                 }
                 
                 .detail-row .detail-value {
-                    color: #2c3e50;
+                    color: var(--text-primary);
                 }
             </style>
         `;
@@ -709,6 +1080,7 @@ class UniFiSentinel {
     closeModal() {
         document.getElementById('deviceModal').style.display = 'none';
         this.selectedDevice = null;
+        this.currentModalTab = 'info';
     }
 
     async acknowledgeFromModal() {
@@ -766,6 +1138,13 @@ class UniFiSentinel {
             const response = await fetch('/api/version');
             const versionInfo = await response.json();
             this.displayVersion(versionInfo);
+            // Also update footer scan interval from settings
+            const settingsResp = await fetch('/api/settings');
+            if (settingsResp.ok) {
+                const settings = await settingsResp.json();
+                const footerEl = document.getElementById('footerScanInterval');
+                if (footerEl && settings.SCAN_INTERVAL) footerEl.textContent = settings.SCAN_INTERVAL;
+            }
         } catch (error) {
             console.error('Error loading version info:', error);
             document.getElementById('versionInfo').textContent = 'Unknown';
@@ -977,12 +1356,16 @@ class UniFiSentinel {
             console.log('🔄 Auto-refreshing data...');
             await this.loadDevices();
             await this.checkStatus();
+            await this.loadAlerts();
             
             // Also refresh parental controls data to show block/unblock status changes
             const currentTab = document.querySelector('.tab-button.active')?.getAttribute('data-tab');
             if (currentTab === 'parental' || currentTab === 'parental-controls') {
                 console.log('🔄 Auto-refreshing parental controls...');
                 await this.loadParentalControlsData();
+            }
+            if (currentTab === 'topology') {
+                await this.loadTopology();
             }
         }, 30000); // Full refresh every 30 seconds
         
@@ -1248,8 +1631,9 @@ class UniFiSentinel {
     initializeDarkMode() {
         const darkMode = localStorage.getItem('darkMode');
         const toggleBtn = document.getElementById('darkModeToggle');
-        
-        if (darkMode === 'true') {
+
+        // Default to dark mode unless the user has explicitly disabled it
+        if (darkMode !== 'false') {
             document.body.setAttribute('data-theme', 'dark');
             toggleBtn.innerHTML = '<i class="fas fa-sun"></i>';
         }
@@ -1336,9 +1720,32 @@ class UniFiSentinel {
         if (settings.UNIFI_SITE) document.getElementById('unifiSite').value = settings.UNIFI_SITE;
         if (settings.PORT) document.getElementById('appPort').value = settings.PORT;
         if (settings.SCAN_INTERVAL) document.getElementById('scanInterval').value = settings.SCAN_INTERVAL;
+
+        // Notifications
+        document.getElementById('notificationsEnabled').checked = settings.NOTIFICATIONS_ENABLED === 'true';
+        // Token/user fields show placeholder if set
+        document.getElementById('pushoverToken').placeholder = settings.PUSHOVER_TOKEN === '[SET]' ? '(already set – enter to change)' : 'Pushover API Token';
+        document.getElementById('pushoverUser').placeholder = settings.PUSHOVER_USER === '[SET]' ? '(already set – enter to change)' : 'Pushover User Key';
+        if (settings.PUSHOVER_PRIORITY) document.getElementById('pushoverPriority').value = settings.PUSHOVER_PRIORITY;
+        if (settings.PUSHOVER_SOUND) document.getElementById('pushoverSound').value = settings.PUSHOVER_SOUND;
+        if (settings.NTFY_URL) document.getElementById('ntfyUrl').value = settings.NTFY_URL;
+        if (settings.NTFY_TOPIC) document.getElementById('ntfyTopic').value = settings.NTFY_TOPIC;
+        document.getElementById('ntfyToken').placeholder = settings.NTFY_TOKEN === '[SET]' ? '(already set – enter to change)' : 'ntfy access token (optional)';
+        if (settings.NTFY_PRIORITY) document.getElementById('ntfyPriority').value = settings.NTFY_PRIORITY;
+
+        // Auth
+        document.getElementById('uiAuthEnabled').checked = settings.UI_AUTH_ENABLED === 'true';
+        if (settings.UI_USERNAME) document.getElementById('uiUsername').value = settings.UI_USERNAME;
+        document.getElementById('uiPassword').placeholder = settings.UI_PASSWORD_SET ? '(already set – enter to change)' : 'Enter password';
+        document.getElementById('uiPassword').value = '';
     }
 
     async saveSettings() {
+        const pushoverToken = document.getElementById('pushoverToken').value.trim();
+        const pushoverUser = document.getElementById('pushoverUser').value.trim();
+        const ntfyToken = document.getElementById('ntfyToken').value.trim();
+        const uiPassword = document.getElementById('uiPassword').value.trim();
+
         const settings = {
             UNIFI_HOST: document.getElementById('unifiHost').value.trim(),
             UNIFI_PORT: document.getElementById('unifiPort').value.trim(),
@@ -1346,8 +1753,24 @@ class UniFiSentinel {
             UNIFI_PASSWORD: document.getElementById('unifiPassword').value.trim(),
             UNIFI_SITE: document.getElementById('unifiSite').value.trim() || 'default',
             PORT: document.getElementById('appPort').value.trim(),
-            SCAN_INTERVAL: document.getElementById('scanInterval').value.trim()
+            SCAN_INTERVAL: document.getElementById('scanInterval').value.trim(),
+            // Notifications
+            NOTIFICATIONS_ENABLED: document.getElementById('notificationsEnabled').checked ? 'true' : 'false',
+            PUSHOVER_PRIORITY: document.getElementById('pushoverPriority').value.trim(),
+            PUSHOVER_SOUND: document.getElementById('pushoverSound').value.trim() || 'default',
+            NTFY_URL: document.getElementById('ntfyUrl').value.trim() || 'https://ntfy.sh',
+            NTFY_TOPIC: document.getElementById('ntfyTopic').value.trim(),
+            NTFY_PRIORITY: document.getElementById('ntfyPriority').value,
+            // Auth
+            UI_AUTH_ENABLED: document.getElementById('uiAuthEnabled').checked ? 'true' : 'false',
+            UI_USERNAME: document.getElementById('uiUsername').value.trim() || 'admin'
         };
+
+        // Only send secrets if they have been filled in (non-empty means user changed them)
+        if (pushoverToken) settings.PUSHOVER_TOKEN = pushoverToken;
+        if (pushoverUser) settings.PUSHOVER_USER = pushoverUser;
+        if (ntfyToken) settings.NTFY_TOKEN = ntfyToken;
+        if (uiPassword) settings.UI_PASSWORD = uiPassword;
 
         // Remove empty values (except password which should be sent if provided)
         Object.keys(settings).forEach(key => {
@@ -1356,12 +1779,17 @@ class UniFiSentinel {
             }
         });
 
+        // Update footer scan interval immediately for user feedback
+        const scanVal = parseInt(settings.SCAN_INTERVAL);
+        if (!isNaN(scanVal)) {
+            const footerEl = document.getElementById('footerScanInterval');
+            if (footerEl) footerEl.textContent = scanVal;
+        }
+
         try {
             const response = await fetch('/api/settings', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(settings)
             });
 
@@ -1519,6 +1947,10 @@ class UniFiSentinel {
         // Load data for parental controls tab
         if (tabName === 'parental') {
             this.loadParentalControlsData();
+        }
+        // Load topology tab
+        if (tabName === 'topology') {
+            this.loadTopology();
         }
     }
 
@@ -2568,6 +3000,122 @@ class UniFiSentinel {
             content.classList.add('active');
             header.classList.add('active');
             icon.style.transform = 'rotate(180deg)';
+        }
+    }
+
+    // ── Topology / Network Map (Feature 9) ────────────────────────────────────
+
+    async loadTopology() {
+        const grid = document.getElementById('topologyGrid');
+        if (!grid) return;
+        grid.innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading network map…</div>';
+        try {
+            const resp = await fetch('/api/network/topology');
+            if (!resp.ok) throw new Error('Failed to fetch topology');
+            const topology = await resp.json();
+            this.renderTopology(topology);
+        } catch (err) {
+            grid.innerHTML = `<div class="no-devices"><i class="fas fa-exclamation-triangle"></i><p>Failed to load network map</p><small>${this.escapeHtml(err.message)}</small></div>`;
+        }
+    }
+
+    renderTopology(topology) {
+        const grid = document.getElementById('topologyGrid');
+        if (topology.length === 0) {
+            grid.innerHTML = '<div class="no-devices"><i class="fas fa-project-diagram"></i><p>No devices in the database yet</p></div>';
+            return;
+        }
+
+        grid.innerHTML = topology.map(group => {
+            const apLabel = group.ap_mac === 'wired'
+                ? '<i class="fas fa-ethernet"></i> Wired Devices'
+                : group.ap_mac === 'unknown'
+                    ? '<i class="fas fa-question-circle"></i> Unknown AP'
+                    : `<i class="fas fa-wifi"></i> AP: ${this.escapeHtml(group.ap_mac)}`;
+
+            const deviceCards = group.devices.map(d => {
+                const name = this.escapeHtml(this.getDeviceDisplayName(d));
+                const ip = this.escapeHtml(d.ip || 'N/A');
+                const vendor = this.escapeHtml(d.vendor || '');
+                const statusClass = d.is_online ? 'online' : 'offline';
+                const ackIcon = d.acknowledged ? '' : ' <span class="new-badge">NEW</span>';
+                const tagsHtml = d.tags
+                    ? d.tags.split(',').map(t => `<span class="device-tag">${this.escapeHtml(t.trim())}</span>`).join('')
+                    : '';
+                return `
+                    <div class="topology-device-card ${statusClass}">
+                        <div class="topology-device-name">${name}${ackIcon}</div>
+                        <div class="topology-device-ip">${ip}</div>
+                        ${vendor ? `<div class="topology-device-vendor">${vendor}</div>` : ''}
+                        ${tagsHtml ? `<div class="device-tags">${tagsHtml}</div>` : ''}
+                        <i class="fas fa-circle topology-status-dot ${statusClass}" title="${d.is_online ? 'Online' : 'Offline'}"></i>
+                    </div>
+                `;
+            }).join('');
+
+            return `
+                <div class="topology-ap-group">
+                    <div class="topology-ap-header">${apLabel} <span class="count-badge">${group.devices.length}</span></div>
+                    <div class="topology-devices-grid">${deviceCards}</div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // ── Auth ─────────────────────────────────────────────────────────────────
+
+    async checkAuthStatus() {
+        try {
+            const resp = await fetch('/api/auth/status');
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const logoutBtn = document.getElementById('logoutBtn');
+            if (logoutBtn) {
+                logoutBtn.style.display = data.authEnabled ? 'inline-flex' : 'none';
+            }
+        } catch (err) {
+            // non-critical
+        }
+    }
+
+    async logout() {
+        try {
+            await fetch('/api/auth/logout', { method: 'POST' });
+            window.location.href = '/login';
+        } catch (err) {
+            window.location.href = '/login';
+        }
+    }
+
+    // ── Notifications ─────────────────────────────────────────────────────────
+
+    async testNotifications() {
+        const btn = document.getElementById('testNotificationsBtn');
+        const result = document.getElementById('notificationTestResult');
+        if (!btn || !result) return;
+        const orig = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…';
+        result.textContent = '';
+        try {
+            const resp = await fetch('/api/notifications/test', { method: 'POST' });
+            const data = await resp.json();
+            if (resp.ok) {
+                const parts = [];
+                if (data.results.pushover) parts.push(`Pushover: ${data.results.pushover.success ? '✓' : '✗ ' + data.results.pushover.error}`);
+                if (data.results.ntfy) parts.push(`ntfy: ${data.results.ntfy.success ? '✓' : '✗ ' + data.results.ntfy.error}`);
+                result.textContent = parts.join('  |  ') || 'No providers configured';
+                result.style.color = parts.every(p => p.includes('✓')) ? '#27ae60' : '#f39c12';
+            } else {
+                result.textContent = 'Test failed';
+                result.style.color = '#e74c3c';
+            }
+        } catch (err) {
+            result.textContent = 'Error: ' + err.message;
+            result.style.color = '#e74c3c';
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = orig;
         }
     }
 }

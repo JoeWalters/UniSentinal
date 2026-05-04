@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UniSentinal - Login</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
+    <style>
+        .login-wrapper {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-primary);
+        }
+        .login-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            box-shadow: 0 24px 64px var(--shadow);
+            padding: 2.5rem 2rem;
+            width: 100%;
+            max-width: 380px;
+            backdrop-filter: blur(12px);
+        }
+        .login-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .login-header h1 {
+            font-size: 1.6rem;
+            color: var(--text-primary);
+            margin: 0.5rem 0 0.25rem;
+        }
+        .login-header p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin: 0;
+        }
+        .login-form .setting-item { margin-bottom: 1.2rem; }
+        .login-form label { display: block; margin-bottom: 0.4rem; font-weight: 600; color: var(--text-primary); font-size: 0.9rem; }
+        .login-form input {
+            width: 100%;
+            padding: 0.65rem 0.9rem;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 0.95rem;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            box-sizing: border-box;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .login-form input:focus { outline: none; border-color: var(--accent-primary); box-shadow: 0 0 0 3px rgba(var(--accent-primary-rgb), 0.15); }
+        #loginError { color: var(--accent-danger); font-size: 0.875rem; margin-bottom: 1rem; display: none; }
+        .login-btn { width: 100%; padding: 0.75rem; font-size: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="login-wrapper">
+        <div class="login-card">
+            <div class="login-header">
+                <img src="favicon.svg" alt="" style="width:2.5rem;height:2.5rem;">
+                <h1>UniSentinal</h1>
+                <p>Sign in to continue</p>
+            </div>
+            <form class="login-form" id="loginForm" autocomplete="on">
+                <div class="setting-item">
+                    <label for="loginUsername">Username</label>
+                    <input type="text" id="loginUsername" name="username" autocomplete="username" required>
+                </div>
+                <div class="setting-item">
+                    <label for="loginPassword">Password</label>
+                    <input type="password" id="loginPassword" name="password" autocomplete="current-password" required>
+                </div>
+                <div id="loginError"><i class="fas fa-exclamation-circle"></i> <span id="loginErrorMsg">Invalid credentials</span></div>
+                <button type="submit" class="btn btn-primary login-btn">
+                    <i class="fas fa-sign-in-alt"></i> Sign In
+                </button>
+            </form>
+        </div>
+    </div>
+    <script src="login.js"></script>
+</body>
+</html>

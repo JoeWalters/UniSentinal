@@ -92,6 +92,18 @@ class DatabaseManager {
             )
         `;
 
+        const createConnectionEventsTable = `
+            CREATE TABLE IF NOT EXISTS connection_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mac TEXT NOT NULL,
+                event_type TEXT NOT NULL, -- 'connected', 'disconnected'
+                ip TEXT,
+                ap_mac TEXT,
+                signal INTEGER,
+                timestamp TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        `;
+
         try {
             this.db.exec(createDevicesTable);console.log('Devices table ready');
             
@@ -100,6 +112,9 @@ class DatabaseManager {
             
             this.db.exec(createParentalLogsTable);
             console.log('Parental logs table ready');
+
+            this.db.exec(createConnectionEventsTable);
+            console.log('Connection events table ready');
             
             // Migrate existing schema to add new columns
             await this.migrateSchema();
@@ -134,6 +149,19 @@ class DatabaseManager {
                     this.db.exec(`ALTER TABLE devices ADD COLUMN ${column.name} ${column.type}`);
                 }
             }
+
+            // New columns for naming/tagging (Feature 8)
+            const deviceNewCols = [
+                { name: 'custom_name', type: 'TEXT' },
+                { name: 'tags', type: 'TEXT' },
+                { name: 'watch_offline', type: 'BOOLEAN DEFAULT 0' }
+            ];
+            for (const column of deviceNewCols) {
+                if (!columnNames.includes(column.name)) {
+                    console.log(`Adding column '${column.name}' to devices table`);
+                    this.db.exec(`ALTER TABLE devices ADD COLUMN ${column.name} ${column.type}`);
+                }
+            }
         } catch (error) {
             console.error('Error migrating schema:', error);
             // Don't throw - continue with existing schema if migration fails
@@ -157,8 +185,8 @@ class DatabaseManager {
             UPDATE devices SET
                 name = ?, ip = ?, hostname = ?, vendor = ?, last_seen = ?,
                 is_online = ?, is_blocked = ?, device_type = ?, os_name = ?,
-                note = ?, uptime = ?, is_wired = ?, ap_mac = ?, network = ?,
-                signal = ?, tx_bytes = ?, rx_bytes = ?
+                uptime = ?, is_wired = ?, ap_mac = ?, network = ?,
+                signal = ?, tx_bytes = ?, rx_bytes = ?, note = COALESCE(?, note)
             WHERE mac = ?
         `);
 
@@ -198,7 +226,6 @@ class DatabaseManager {
                         device.is_blocked ? 1 : 0,
                         device.device_type,
                         device.os_name,
-                        device.note,
                         device.uptime,
                         device.is_wired ? 1 : 0,
                         device.ap_mac,
@@ -206,6 +233,7 @@ class DatabaseManager {
                         device.signal,
                         device.tx_bytes,
                         device.rx_bytes,
+                        device.note || null,
                         device.mac
                     );
                 }
@@ -216,9 +244,34 @@ class DatabaseManager {
 
             // Re-alert watched devices that have reconnected since the last alert
             this._checkWatchAlerts(devices);
+
+            this._recordConnectionEvents(devices);
         } catch (error) {
             console.error('Error adding devices:', error);
             throw error;
+        }
+    }
+
+    _recordConnectionEvents(scannedDevices) {
+        try {
+            const insertEvent = this.db.prepare(
+                `INSERT INTO connection_events (mac, event_type, ip, ap_mac, signal)
+                 SELECT ?, 'connected', ?, ?, ?
+                 WHERE NOT EXISTS (
+                     SELECT 1 FROM connection_events
+                     WHERE mac = ? AND event_type = 'connected'
+                     AND timestamp >= datetime('now', '-2 minutes')
+                 )`
+            );
+
+            for (const d of scannedDevices) {
+                if (d.is_online) {
+                    insertEvent.run(d.mac, d.ip || null, d.ap_mac || null,
+                        d.signal || null, d.mac);
+                }
+            }
+        } catch (error) {
+            console.error('Error recording connection events:', error);
         }
     }
 
@@ -591,6 +644,122 @@ class DatabaseManager {
             return mac ? stmt.all(mac, limit) : stmt.all(limit);
         } catch (error) {
             console.error('Error getting parental logs:', error);
+            throw error;
+        }
+    }
+
+    // ── Device naming / tagging (Feature 8) ─────────────────────────
+
+    async updateDeviceMeta(mac, { custom_name, tags, note, watch_connection, watch_offline }) {
+        try {
+            const fields = [];
+            const values = [];
+            if (custom_name !== undefined) { fields.push('custom_name = ?'); values.push(custom_name || null); }
+            if (tags !== undefined) { fields.push('tags = ?'); values.push(tags || null); }
+            if (note !== undefined) { fields.push('note = ?'); values.push(note || null); }
+            if (watch_connection !== undefined) { fields.push('watch_connection = ?'); values.push(watch_connection ? 1 : 0); }
+            if (watch_offline !== undefined) { fields.push('watch_offline = ?'); values.push(watch_offline ? 1 : 0); }
+            if (fields.length === 0) return;
+            values.push(mac);
+            this.db.prepare(`UPDATE devices SET ${fields.join(', ')} WHERE mac = ?`).run(...values);
+        } catch (error) {
+            console.error('Error updating device meta:', error);
+            throw error;
+        }
+    }
+
+    // ── Device connection history (Feature 7) ─────────────────────────
+
+    getDeviceHistory(mac, limit = 100) {
+        try {
+            return this.db.prepare(
+                `SELECT * FROM connection_events WHERE mac = ?
+                 ORDER BY timestamp DESC LIMIT ?`
+            ).all(mac, Math.min(limit, 500));
+        } catch (error) {
+            console.error('Error getting device history:', error);
+            throw error;
+        }
+    }
+
+    getConnectionSummary(mac) {
+        try {
+            const device = this.db.prepare(`SELECT * FROM devices WHERE mac = ?`).get(mac);
+            if (!device) return null;
+
+            const totalEvents = this.db.prepare(
+                `SELECT COUNT(*) as cnt FROM connection_events WHERE mac = ?`
+            ).get(mac);
+
+            const firstEvent = this.db.prepare(
+                `SELECT timestamp FROM connection_events WHERE mac = ? ORDER BY timestamp ASC LIMIT 1`
+            ).get(mac);
+
+            const lastEvent = this.db.prepare(
+                `SELECT timestamp FROM connection_events WHERE mac = ? ORDER BY timestamp DESC LIMIT 1`
+            ).get(mac);
+
+            return {
+                mac,
+                custom_name: device.custom_name,
+                hostname: device.hostname,
+                first_seen: device.first_seen,
+                last_seen: device.last_seen,
+                total_connections: totalEvents ? totalEvents.cnt : 0,
+                first_event: firstEvent ? firstEvent.timestamp : null,
+                last_event: lastEvent ? lastEvent.timestamp : null
+            };
+        } catch (error) {
+            console.error('Error getting connection summary:', error);
+            throw error;
+        }
+    }
+
+    // ── Network topology (Feature 9) ──────────────────────────────────
+
+    getTopology() {
+        try {
+            const devices = this.db.prepare(
+                `SELECT mac, custom_name, hostname, name, ip, vendor, is_wired, is_online,
+                        ap_mac, signal, device_type, acknowledged, watch_connection
+                 FROM devices ORDER BY ap_mac NULLS LAST, hostname`
+            ).all();
+
+            // Group by AP MAC
+            const apMap = {};
+            for (const d of devices) {
+                const apKey = d.is_wired ? 'wired' : (d.ap_mac || 'unknown');
+                if (!apMap[apKey]) apMap[apKey] = { ap_mac: apKey, devices: [] };
+                apMap[apKey].devices.push({
+                    ...d,
+                    is_wired: Boolean(d.is_wired),
+                    is_online: Boolean(d.is_online),
+                    acknowledged: Boolean(d.acknowledged),
+                    watch_connection: Boolean(d.watch_connection)
+                });
+            }
+            return Object.values(apMap);
+        } catch (error) {
+            console.error('Error getting topology:', error);
+            throw error;
+        }
+    }
+
+    // ── Export (Feature 13) ───────────────────────────────────────────
+
+    exportDevices() {
+        try {
+            return this.db.prepare(
+                `SELECT mac, custom_name, hostname, name, ip, vendor,
+                        device_type, os_name, is_wired, is_online, is_blocked,
+                        ap_mac, network, signal, tx_bytes, rx_bytes,
+                        first_seen, last_seen, detected_at,
+                        acknowledged, acknowledged_at, watch_connection,
+                        tags, note
+                 FROM devices ORDER BY first_seen`
+            ).all();
+        } catch (error) {
+            console.error('Error exporting devices:', error);
             throw error;
         }
     }

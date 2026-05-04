@@ -497,14 +497,18 @@ class UnifiController {
                 vendor: this.getVendorName(client),
                 is_online: this.isDeviceOnline(client),
                 is_blocked: client.blocked || false,
-                first_seen: client.first_seen || Date.now(),
-                last_seen: client.last_seen || Date.now(),
+                first_seen: client.first_seen ? new Date(client.first_seen * 1000).toISOString() : new Date().toISOString(),
+                last_seen: client.last_seen ? new Date(client.last_seen * 1000).toISOString() : new Date().toISOString(),
                 device_type: this.getDeviceType(client),
-                os_name: client.os_name ? String(client.os_name) : null,
-                note: client.noted ? String(client.noted) : null,
+                os_name: (client.os_name && isNaN(Number(client.os_name))) ? String(client.os_name) : null,
+                note: client.note ? String(client.note) : null,
                 uptime: client.uptime || null,
-                // Add debugging fields
-                is_wired: client.is_wired || false
+                is_wired: client.is_wired || false,
+                ap_mac: client.ap_mac || null,
+                network: client.essid || client.network || null,
+                signal: client.rssi != null ? client.rssi : (client.signal != null ? client.signal : null),
+                tx_bytes: client.tx_bytes || 0,
+                rx_bytes: client.rx_bytes || 0
             }));
             
             const onlineCount = newDevices.filter(d => d.is_online).length;
