@@ -93,15 +93,7 @@ class UniFiSentinel {
         }
 
         // Alert banner
-        document.getElementById('viewAlertsBtn')?.addEventListener('click', () => this.showAlertsModal());
-        document.getElementById('closeAlertsModal')?.addEventListener('click', () => this.closeAlertsModal());
-        document.getElementById('alertsModalCloseBtn')?.addEventListener('click', () => this.closeAlertsModal());
-        document.getElementById('alertsModal')?.addEventListener('click', (e) => {
-            if (e.target === document.getElementById('alertsModal')) this.closeAlertsModal();
-        });
-        document.getElementById('dismissAlertBanner')?.addEventListener('click', () => {
-            document.getElementById('alertBanner').style.display = 'none';
-        });
+
 
         // Logout
         document.getElementById('logoutBtn')?.addEventListener('click', () => this.logout());
@@ -132,6 +124,18 @@ class UniFiSentinel {
         document.getElementById('saveSettingsBtn').addEventListener('click', () => this.saveSettings());
         document.getElementById('testSettingsBtn').addEventListener('click', () => this.testSettings());
         document.getElementById('refreshLogsBtn').addEventListener('click', () => this.loadLogs());
+
+        // Settings sidebar navigation
+        document.querySelectorAll('.settings-nav-item').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tab = btn.dataset.settingsTab;
+                document.querySelectorAll('.settings-nav-item').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.settings-panel').forEach(p => p.classList.remove('active'));
+                btn.classList.add('active');
+                const panel = document.querySelector(`.settings-panel[data-panel="${tab}"]`);
+                if (panel) panel.classList.add('active');
+            });
+        });
 
         // Add device modal events
         const closeAddDeviceModal = document.getElementById('closeAddDeviceModal');
@@ -3047,89 +3051,6 @@ class UniFiSentinel {
                 </div>
             `;
         }).join('');
-    }
-
-    // ── Suspicious Device Alerts (Feature 10) ─────────────────────────────────
-
-    async loadAlerts() {
-        try {
-            const resp = await fetch('/api/alerts');
-            if (!resp.ok) return;
-            const alerts = await resp.json();
-            this._activeAlerts = alerts;
-            const banner = document.getElementById('alertBanner');
-            const text = document.getElementById('alertBannerText');
-            if (!banner) return;
-            if (alerts.length > 0) {
-                const a = alerts[0];
-                text.textContent = alerts.length > 1
-                    ? `${alerts.length} suspicious device alerts`
-                    : this._alertMessage(a);
-                banner.style.display = 'flex';
-                document.getElementById('dismissAlertBanner').onclick = async () => {
-                    await fetch(`/api/alerts/${a.id}/dismiss`, { method: 'POST' });
-                    banner.style.display = 'none';
-                    this.loadAlerts();
-                };
-            } else {
-                banner.style.display = 'none';
-            }
-        } catch (err) {
-            // alerts are non-critical
-        }
-    }
-
-    _alertMessage(a) {
-        if (a.alert_type === 'duplicate_hostname') {
-            return `Suspicious: duplicate hostname "${this.escapeHtml(a.detail)}" on multiple devices`;
-        } else if (a.alert_type === 'mac_change') {
-            return `Suspicious: possible MAC address change for a device`;
-        }
-        return 'Suspicious network activity detected';
-    }
-
-    showAlertsModal() {
-        const modal = document.getElementById('alertsModal');
-        const body = document.getElementById('alertsModalBody');
-        if (!modal) return;
-
-        const alerts = this._activeAlerts || [];
-        if (alerts.length === 0) {
-            body.innerHTML = `<p style="text-align:center;color:var(--text-secondary);padding:20px"><i class="fas fa-check-circle" style="color:var(--accent-success);font-size:2rem;display:block;margin-bottom:10px"></i>No active alerts</p>`;
-        } else {
-            body.innerHTML = alerts.map(a => `
-                <div class="alert-item" data-id="${a.id}" style="display:flex;align-items:flex-start;gap:12px;padding:14px 0;border-bottom:1px solid var(--border-color);">
-                    <i class="fas fa-exclamation-triangle" style="color:var(--accent-warning);margin-top:2px;flex-shrink:0"></i>
-                    <div style="flex:1;min-width:0">
-                        <div style="font-weight:600;color:var(--text-primary);margin-bottom:4px">${this._alertMessage(a)}</div>
-                        <div style="font-size:0.8rem;color:var(--text-secondary)">
-                            ${a.mac1 ? `MAC: <code>${this.escapeHtml(a.mac1)}</code>` : ''}
-                            ${a.mac2 ? ` &amp; <code>${this.escapeHtml(a.mac2)}</code>` : ''}
-                            &nbsp;·&nbsp; ${new Date(a.created_at).toLocaleString()}
-                        </div>
-                    </div>
-                    <button class="btn btn-small btn-secondary dismiss-alert-btn" data-id="${a.id}" style="flex-shrink:0">Dismiss</button>
-                </div>
-            `).join('');
-
-            body.querySelectorAll('.dismiss-alert-btn').forEach(btn => {
-                btn.addEventListener('click', async () => {
-                    const id = btn.getAttribute('data-id');
-                    btn.disabled = true;
-                    btn.textContent = '…';
-                    await fetch(`/api/alerts/${id}/dismiss`, { method: 'POST' });
-                    await this.loadAlerts();
-                    this.showAlertsModal(); // re-render with updated list
-                });
-            });
-        }
-
-        modal.style.display = 'flex';
-    }
-
-    closeAlertsModal() {
-        const modal = document.getElementById('alertsModal');
-        if (modal) modal.style.display = 'none';
     }
 
     // ── Auth ─────────────────────────────────────────────────────────────────

@@ -194,11 +194,7 @@ function startScanInterval(intervalMs) {
                     }
                 }
             }
-            // Run suspicious device detection
-            const suspicious = dbManager.detectSuspiciousDevices();
-            for (const alert of suspicious) {
-                notificationManager.notifySuspiciousDevice(alert.type, alert).catch(() => {});
-            }
+
         } catch (error) {
             logger.error('Error in periodic scan:', error.message);
         }
@@ -955,29 +951,6 @@ app.get('/api/network/topology', async (req, res) => {
     } catch (error) {
         logger.error('Error getting topology:', error.message);
         res.status(500).json({ error: 'Failed to get topology' });
-    }
-});
-
-// ── Suspicious device alerts (Feature 10) ───────────────────────────────────
-app.get('/api/alerts', async (req, res) => {
-    try {
-        const alerts = dbManager.getActiveAlerts();
-        res.json(alerts);
-    } catch (error) {
-        logger.error('Error getting alerts:', error.message);
-        res.status(500).json({ error: 'Failed to get alerts' });
-    }
-});
-
-app.post('/api/alerts/:id/dismiss', async (req, res) => {
-    try {
-        const id = parseInt(req.params.id);
-        if (isNaN(id)) return res.status(400).json({ error: 'Invalid alert ID' });
-        dbManager.dismissAlert(id);
-        res.json({ success: true });
-    } catch (error) {
-        logger.error('Error dismissing alert:', error.message);
-        res.status(500).json({ error: 'Failed to dismiss alert' });
     }
 });
 

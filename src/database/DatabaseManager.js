@@ -104,18 +104,6 @@ class DatabaseManager {
             )
         `;
 
-        const createDeviceAlertsTable = `
-            CREATE TABLE IF NOT EXISTS device_alerts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                alert_type TEXT NOT NULL, -- 'duplicate_hostname', 'mac_change'
-                mac1 TEXT NOT NULL,
-                mac2 TEXT,
-                detail TEXT,
-                dismissed INTEGER DEFAULT 0,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
-            )
-        `;
-
         try {
             this.db.exec(createDevicesTable);console.log('Devices table ready');
             
@@ -127,9 +115,6 @@ class DatabaseManager {
 
             this.db.exec(createConnectionEventsTable);
             console.log('Connection events table ready');
-
-            this.db.exec(createDeviceAlertsTable);
-            console.log('Device alerts table ready');
             
             // Migrate existing schema to add new columns
             await this.migrateSchema();
@@ -259,7 +244,6 @@ class DatabaseManager {
             // Re-alert watched devices that have reconnected since the last alert
             this._checkWatchAlerts(devices);
 
-            // Record connection events and check for suspicious activity
             this._recordConnectionEvents(devices);
         } catch (error) {
             console.error('Error adding devices:', error);
@@ -756,67 +740,6 @@ class DatabaseManager {
             return Object.values(apMap);
         } catch (error) {
             console.error('Error getting topology:', error);
-            throw error;
-        }
-    }
-
-    // ── Suspicious device detection (Feature 10) ──────────────────────
-
-    detectSuspiciousDevices() {
-        try {
-            const alerts = [];
-
-            // Duplicate hostname: two different MACs share the same non-trivial hostname
-            const dupHostnames = this.db.prepare(
-                `SELECT hostname, GROUP_CONCAT(mac) as macs, COUNT(*) as cnt
-                 FROM devices
-                 WHERE hostname IS NOT NULL AND hostname != ''
-                   AND hostname NOT GLOB '*.arpa'
-                 GROUP BY LOWER(hostname)
-                 HAVING cnt > 1`
-            ).all();
-
-            for (const row of dupHostnames) {
-                const macList = row.macs.split(',');
-                // Check if alert already exists and is not dismissed
-                const exists = this.db.prepare(
-                    `SELECT 1 FROM device_alerts
-                     WHERE alert_type = 'duplicate_hostname'
-                       AND detail = ?
-                       AND dismissed = 0`
-                ).get(row.hostname);
-                if (!exists) {
-                    this.db.prepare(
-                        `INSERT INTO device_alerts (alert_type, mac1, mac2, detail)
-                         VALUES ('duplicate_hostname', ?, ?, ?)`
-                    ).run(macList[0], macList[1] || null, row.hostname);
-                    alerts.push({ type: 'duplicate_hostname', hostname: row.hostname, macs: macList });
-                }
-            }
-
-            return alerts;
-        } catch (error) {
-            console.error('Error detecting suspicious devices:', error);
-            return [];
-        }
-    }
-
-    getActiveAlerts() {
-        try {
-            return this.db.prepare(
-                `SELECT * FROM device_alerts WHERE dismissed = 0 ORDER BY created_at DESC`
-            ).all();
-        } catch (error) {
-            console.error('Error getting alerts:', error);
-            throw error;
-        }
-    }
-
-    dismissAlert(id) {
-        try {
-            this.db.prepare(`UPDATE device_alerts SET dismissed = 1 WHERE id = ?`).run(id);
-        } catch (error) {
-            console.error('Error dismissing alert:', error);
             throw error;
         }
     }

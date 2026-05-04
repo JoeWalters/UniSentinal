@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>UniSentinal - UniFi Device Monitor</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <link rel="stylesheet" href="styles.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
 </head>
@@ -11,8 +12,8 @@
     <div class="container">
         <header>
             <div class="header-content">
-                <h1><i class="fas fa-shield-alt"></i> UniSentinal</h1>
-                <p>New Device Detection System</p>
+                <h1><img src="favicon.svg" alt="" style="height:1em;width:1em;vertical-align:-0.15em;margin-right:0.25em;"> UniSentinal</h1>
+                <p>Network Device Detection & Alerting</p>
             </div>
             <div class="header-right">
                 <div class="status-indicator" id="statusIndicator">
@@ -34,14 +35,6 @@
         </header>
 
         <main>
-            <!-- Alert Banner -->
-            <div id="alertBanner" class="alert-banner" style="display:none;">
-                <i class="fas fa-exclamation-triangle"></i>
-                <span id="alertBannerText">Suspicious device activity detected</span>
-                <button class="btn btn-small btn-warning" id="viewAlertsBtn">View Alerts</button>
-                <button class="btn-icon alert-dismiss-btn" id="dismissAlertBanner" title="Dismiss"><i class="fas fa-times"></i></button>
-            </div>
-
             <!-- Tab Navigation -->
             <div class="tab-navigation">
                 <button class="tab-button active" data-tab="monitoring">
@@ -432,9 +425,15 @@
 
     <!-- Settings Modal -->
     <div class="modal" id="settingsModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3><i class="fas fa-cog"></i> Settings</h3>
+        <div class="modal-content settings-modal-content">
+            <div class="modal-header settings-modal-header">
+                <div class="settings-header-brand">
+                    <img src="favicon.svg" alt="" class="settings-brand-icon">
+                    <div>
+                        <h3>Settings</h3>
+                        <span class="settings-header-sub">UniSentinal Configuration</span>
+                    </div>
+                </div>
                 <div class="config-status" id="configStatus">
                     <span class="config-indicator" id="configIndicator"></span>
                     <span class="config-text" id="configText">Checking...</span>
@@ -443,162 +442,238 @@
                     <i class="fas fa-times"></i>
                 </button>
             </div>
-            <div class="modal-body">
-                <div class="settings-section">
-                    <h4>UniFi Controller Configuration</h4>
-                    <div class="settings-grid">
-                        <div class="setting-item">
-                            <label for="unifiHost">Controller Host/IP</label>
-                            <input type="text" id="unifiHost" value="192.168.1.1" placeholder="192.168.1.1">
-                        </div>
-                        <div class="setting-item">
-                            <label for="unifiPort">Port</label>
-                            <input type="number" id="unifiPort" value="443" placeholder="443">
-                        </div>
-                        <div class="setting-item">
-                            <label for="unifiUsername">Username</label>
-                            <input type="text" id="unifiUsername" value="admin" placeholder="admin">
-                        </div>
-                        <div class="setting-item">
-                            <label for="unifiPassword">Password</label>
-                            <input type="password" id="unifiPassword" placeholder="Enter password">
-                        </div>
-                        <div class="setting-item">
-                            <label for="unifiSite">Site Name</label>
-                            <input type="text" id="unifiSite" value="default" placeholder="default">
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="settings-section">
-                    <h4>Application Settings</h4>
-                    <div class="settings-grid">
-                        <div class="setting-item">
-                            <label for="appPort">Server Port</label>
-                            <input type="number" id="appPort" value="3000" placeholder="3000">
-                        </div>
-                        <div class="setting-item">
-                            <label for="scanInterval">Scan Interval (seconds)</label>
-                            <input type="number" id="scanInterval" value="30" placeholder="30" min="10" max="300">
-                        </div>
-                    </div>
-                </div>
 
-                <div class="settings-section">
-                    <h4><i class="fas fa-bell"></i> Push Notifications</h4>
-                    <div class="settings-grid">
-                        <div class="setting-item setting-item-full">
-                            <label class="toggle-label">
-                                <input type="checkbox" id="notificationsEnabled">
-                                <span>Enable push notifications</span>
-                            </label>
+            <div class="settings-layout">
+                <nav class="settings-nav">
+                    <button class="settings-nav-item active" data-settings-tab="controller">
+                        <i class="fas fa-server"></i><span>Controller</span>
+                    </button>
+                    <button class="settings-nav-item" data-settings-tab="app">
+                        <i class="fas fa-sliders-h"></i><span>Application</span>
+                    </button>
+                    <button class="settings-nav-item" data-settings-tab="notifications">
+                        <i class="fas fa-bell"></i><span>Notifications</span>
+                    </button>
+                    <button class="settings-nav-item" data-settings-tab="auth">
+                        <i class="fas fa-lock"></i><span>Authentication</span>
+                    </button>
+                    <button class="settings-nav-item" data-settings-tab="about">
+                        <i class="fas fa-circle-info"></i><span>About</span>
+                    </button>
+                </nav>
+
+                <div class="settings-panels">
+                    <!-- Controller panel -->
+                    <div class="settings-panel active" data-panel="controller">
+                        <div class="settings-panel-header">
+                            <i class="fas fa-server"></i>
+                            <div>
+                                <h4>UniFi Controller</h4>
+                                <p>Connection details for your UniFi controller</p>
+                            </div>
                         </div>
-                    </div>
-                    <div class="notification-providers">
-                        <details class="provider-details">
-                            <summary><i class="fas fa-mobile-alt"></i> Pushover</summary>
+                        <div class="settings-card">
                             <div class="settings-grid">
                                 <div class="setting-item">
-                                    <label for="pushoverToken">API Token</label>
-                                    <input type="password" id="pushoverToken" placeholder="Leave blank to keep existing">
+                                    <label for="unifiHost">Controller Host / IP</label>
+                                    <input type="text" id="unifiHost" value="192.168.1.1" placeholder="192.168.1.1">
                                 </div>
                                 <div class="setting-item">
-                                    <label for="pushoverUser">User/Group Key</label>
-                                    <input type="password" id="pushoverUser" placeholder="Leave blank to keep existing">
+                                    <label for="unifiPort">Port</label>
+                                    <input type="number" id="unifiPort" value="443" placeholder="443">
                                 </div>
                                 <div class="setting-item">
-                                    <label for="pushoverPriority">Priority (-2 to 2)</label>
-                                    <input type="number" id="pushoverPriority" value="0" min="-2" max="2">
+                                    <label for="unifiUsername">Username</label>
+                                    <input type="text" id="unifiUsername" value="admin" placeholder="admin" autocomplete="username">
                                 </div>
                                 <div class="setting-item">
-                                    <label for="pushoverSound">Sound</label>
-                                    <input type="text" id="pushoverSound" value="default" placeholder="default">
+                                    <label for="unifiPassword">Password</label>
+                                    <input type="password" id="unifiPassword" placeholder="Enter password" autocomplete="current-password">
+                                </div>
+                                <div class="setting-item">
+                                    <label for="unifiSite">Site Name</label>
+                                    <input type="text" id="unifiSite" value="default" placeholder="default">
                                 </div>
                             </div>
-                        </details>
-                        <details class="provider-details">
-                            <summary><i class="fas fa-paper-plane"></i> ntfy</summary>
+                        </div>
+                    </div>
+
+                    <!-- Application panel -->
+                    <div class="settings-panel" data-panel="app">
+                        <div class="settings-panel-header">
+                            <i class="fas fa-sliders-h"></i>
+                            <div>
+                                <h4>Application</h4>
+                                <p>Server and scanning configuration</p>
+                            </div>
+                        </div>
+                        <div class="settings-card">
                             <div class="settings-grid">
                                 <div class="setting-item">
-                                    <label for="ntfyUrl">Server URL</label>
-                                    <input type="text" id="ntfyUrl" value="https://ntfy.sh" placeholder="https://ntfy.sh">
+                                    <label for="appPort">Server Port</label>
+                                    <input type="number" id="appPort" value="3000" placeholder="3000">
                                 </div>
                                 <div class="setting-item">
-                                    <label for="ntfyTopic">Topic</label>
-                                    <input type="text" id="ntfyTopic" placeholder="my-unisentinal-alerts">
-                                </div>
-                                <div class="setting-item">
-                                    <label for="ntfyToken">Token (optional)</label>
-                                    <input type="password" id="ntfyToken" placeholder="Leave blank to keep existing">
-                                </div>
-                                <div class="setting-item">
-                                    <label for="ntfyPriority">Priority</label>
-                                    <select id="ntfyPriority" class="filter-select">
-                                        <option value="min">Min</option>
-                                        <option value="low">Low</option>
-                                        <option value="default" selected>Default</option>
-                                        <option value="high">High</option>
-                                        <option value="urgent">Urgent</option>
-                                    </select>
+                                    <label for="scanInterval">Scan Interval <span class="setting-hint">(seconds, 10–300)</span></label>
+                                    <input type="number" id="scanInterval" value="30" placeholder="30" min="10" max="300">
                                 </div>
                             </div>
-                        </details>
+                        </div>
                     </div>
-                    <div class="notification-test-row">
-                        <button class="btn btn-info btn-small" id="testNotificationsBtn">
-                            <i class="fas fa-bell"></i> Send Test Notification
-                        </button>
-                        <span id="notificationTestResult" class="test-result-text"></span>
-                    </div>
-                </div>
 
-                <div class="settings-section">
-                    <h4><i class="fas fa-lock"></i> Web UI Authentication</h4>
-                    <p class="settings-hint">When enabled, the UI requires a username and password. Disabled by default.</p>
-                    <div class="settings-grid">
-                        <div class="setting-item setting-item-full">
-                            <label class="toggle-label">
-                                <input type="checkbox" id="uiAuthEnabled">
-                                <span>Enable Web UI login</span>
-                            </label>
+                    <!-- Notifications panel -->
+                    <div class="settings-panel" data-panel="notifications">
+                        <div class="settings-panel-header">
+                            <i class="fas fa-bell"></i>
+                            <div>
+                                <h4>Push Notifications</h4>
+                                <p>Configure alert providers</p>
+                            </div>
                         </div>
-                        <div class="setting-item">
-                            <label for="uiUsername">Username</label>
-                            <input type="text" id="uiUsername" value="admin" placeholder="admin">
+                        <div class="settings-card">
+                            <div class="settings-toggle-row">
+                                <div>
+                                    <span class="toggle-title">Enable push notifications</span>
+                                    <span class="toggle-sub">Send alerts when new devices are detected</span>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="notificationsEnabled">
+                                    <span class="switch-slider"></span>
+                                </label>
+                            </div>
                         </div>
-                        <div class="setting-item">
-                            <label for="uiPassword">Password</label>
-                            <input type="password" id="uiPassword" placeholder="Enter new password">
+                        <div class="notification-providers">
+                            <details class="provider-details">
+                                <summary><i class="fas fa-mobile-alt"></i> Pushover</summary>
+                                <div class="settings-grid">
+                                    <div class="setting-item">
+                                        <label for="pushoverToken">API Token</label>
+                                        <input type="password" id="pushoverToken" placeholder="Leave blank to keep existing">
+                                    </div>
+                                    <div class="setting-item">
+                                        <label for="pushoverUser">User / Group Key</label>
+                                        <input type="password" id="pushoverUser" placeholder="Leave blank to keep existing">
+                                    </div>
+                                    <div class="setting-item">
+                                        <label for="pushoverPriority">Priority <span class="setting-hint">(-2 to 2)</span></label>
+                                        <input type="number" id="pushoverPriority" value="0" min="-2" max="2">
+                                    </div>
+                                    <div class="setting-item">
+                                        <label for="pushoverSound">Sound</label>
+                                        <input type="text" id="pushoverSound" value="default" placeholder="default">
+                                    </div>
+                                </div>
+                            </details>
+                            <details class="provider-details">
+                                <summary><i class="fas fa-paper-plane"></i> ntfy</summary>
+                                <div class="settings-grid">
+                                    <div class="setting-item">
+                                        <label for="ntfyUrl">Server URL</label>
+                                        <input type="text" id="ntfyUrl" value="https://ntfy.sh" placeholder="https://ntfy.sh">
+                                    </div>
+                                    <div class="setting-item">
+                                        <label for="ntfyTopic">Topic</label>
+                                        <input type="text" id="ntfyTopic" placeholder="my-unisentinal-alerts">
+                                    </div>
+                                    <div class="setting-item">
+                                        <label for="ntfyToken">Token <span class="setting-hint">(optional)</span></label>
+                                        <input type="password" id="ntfyToken" placeholder="Leave blank to keep existing">
+                                    </div>
+                                    <div class="setting-item">
+                                        <label for="ntfyPriority">Priority</label>
+                                        <select id="ntfyPriority" class="filter-select">
+                                            <option value="min">Min</option>
+                                            <option value="low">Low</option>
+                                            <option value="default" selected>Default</option>
+                                            <option value="high">High</option>
+                                            <option value="urgent">Urgent</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </details>
                         </div>
-                    </div>
-                </div>
-                
-                <div class="settings-section">
-                    <h4>Version Information</h4>
-                    <div class="version-details" id="versionDetails">
-                        <div class="loading">Loading version information...</div>
-                    </div>
-                </div>
-                
-                <div class="settings-section">
-                    <h4>Logs</h4>
-                    <div class="logs-container">
-                        <div class="logs-header">
-                            <span>Recent Application Logs</span>
-                            <button id="refreshLogsBtn" class="btn btn-secondary btn-small">
-                                <i class="fas fa-sync-alt"></i> Refresh
+                        <div class="notification-test-row">
+                            <button class="btn btn-info btn-small" id="testNotificationsBtn">
+                                <i class="fas fa-bell"></i> Send Test Notification
                             </button>
-                        </div>
-                        <div class="logs-content" id="logsContent">
-                            <div class="loading-logs">Loading logs...</div>
+                            <span id="notificationTestResult" class="test-result-text"></span>
                         </div>
                     </div>
-                </div>
-            </div>
+
+                    <!-- Auth panel -->
+                    <div class="settings-panel" data-panel="auth">
+                        <div class="settings-panel-header">
+                            <i class="fas fa-lock"></i>
+                            <div>
+                                <h4>Web UI Authentication</h4>
+                                <p>Protect the dashboard with a login screen</p>
+                            </div>
+                        </div>
+                        <div class="settings-card">
+                            <div class="settings-toggle-row">
+                                <div>
+                                    <span class="toggle-title">Enable Web UI login</span>
+                                    <span class="toggle-sub">Require username &amp; password to access the dashboard</span>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="uiAuthEnabled">
+                                    <span class="switch-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="settings-card" style="margin-top:14px;">
+                            <div class="settings-grid">
+                                <div class="setting-item">
+                                    <label for="uiUsername">Username</label>
+                                    <input type="text" id="uiUsername" value="admin" placeholder="admin" autocomplete="username">
+                                </div>
+                                <div class="setting-item">
+                                    <label for="uiPassword">Password</label>
+                                    <input type="password" id="uiPassword" placeholder="Enter new password" autocomplete="new-password">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- About panel -->
+                    <div class="settings-panel" data-panel="about">
+                        <div class="settings-panel-header">
+                            <i class="fas fa-circle-info"></i>
+                            <div>
+                                <h4>About &amp; Logs</h4>
+                                <p>Version information and recent application logs</p>
+                            </div>
+                        </div>
+                        <div class="settings-card">
+                            <div class="version-details" id="versionDetails">
+                                <div class="loading">Loading version information...</div>
+                            </div>
+                        </div>
+                        <div class="settings-card" style="margin-top:14px;">
+                            <div class="logs-container">
+                                <div class="logs-header">
+                                    <span>Recent Application Logs</span>
+                                    <button id="refreshLogsBtn" class="btn btn-secondary btn-small">
+                                        <i class="fas fa-sync-alt"></i> Refresh
+                                    </button>
+                                </div>
+                                <div class="logs-content" id="logsContent">
+                                    <div class="loading-logs">Loading logs...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div><!-- /settings-panels -->
+            </div><!-- /settings-layout -->
+
             <div class="modal-footer">
                 <button class="btn btn-secondary" id="settingsCloseBtn">Cancel</button>
-                <button class="btn btn-info" id="testSettingsBtn">Test Settings</button>
-                <button class="btn btn-primary" id="saveSettingsBtn">Save Settings</button>
+                <button class="btn btn-info" id="testSettingsBtn">
+                    <i class="fas fa-plug"></i> Test Connection
+                </button>
+                <button class="btn btn-primary" id="saveSettingsBtn">
+                    <i class="fas fa-save"></i> Save Settings
+                </button>
             </div>
         </div>
     </div>
@@ -729,22 +804,6 @@
                 <button class="btn btn-danger" id="removeDeviceBtn">
                     <i class="fas fa-trash"></i> Remove from Parental Controls
                 </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Alerts Modal -->
-    <div class="modal" id="alertsModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3><i class="fas fa-exclamation-triangle" style="color:var(--accent-warning)"></i> Suspicious Device Alerts</h3>
-                <button class="close-btn" id="closeAlertsModal">&times;</button>
-            </div>
-            <div class="modal-body" id="alertsModalBody">
-                <p style="color:var(--text-secondary)">Loading alerts…</p>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" id="alertsModalCloseBtn">Close</button>
             </div>
         </div>
     </div>
