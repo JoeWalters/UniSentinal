@@ -503,8 +503,12 @@ class UnifiController {
                 os_name: client.os_name ? String(client.os_name) : null,
                 note: client.noted ? String(client.noted) : null,
                 uptime: client.uptime || null,
-                // Add debugging fields
-                is_wired: client.is_wired || false
+                is_wired: client.is_wired || false,
+                ap_mac: client.ap_mac || null,
+                network: client.essid || client.network || null,
+                signal: client.rssi != null ? client.rssi : (client.signal != null ? client.signal : null),
+                tx_bytes: client.tx_bytes || 0,
+                rx_bytes: client.rx_bytes || 0
             }));
             
             const onlineCount = newDevices.filter(d => d.is_online).length;

@@ -158,6 +158,14 @@ function startScanInterval(intervalMs) {
     scanIntervalHandle = setInterval(async () => {
         try {
             if (!unifiController.isConfigured()) return;
+
+            // Snapshot which watch_offline devices were online BEFORE this scan
+            const prevOnline = new Set(
+                (await dbManager.getAllDevices())
+                    .filter(d => d.is_online && d.watch_offline)
+                    .map(d => d.mac)
+            );
+
             const newDevices = await unifiController.scanForNewDevices();
             if (newDevices.length > 0) {
                 await dbManager.addNewDevices(newDevices);
@@ -172,6 +180,18 @@ function startScanInterval(intervalMs) {
             for (const d of newWatched) {
                 if (d.watch_connection) {
                     notificationManager.notifyWatchedDevice(d).catch(() => {});
+                }
+            }
+            // Offline alerts: notify if a previously-online watch_offline device is now offline
+            const nowOnlineMacs = new Set(newDevices.filter(d => d.is_online).map(d => d.mac));
+            for (const mac of prevOnline) {
+                if (!nowOnlineMacs.has(mac)) {
+                    const device = (await dbManager.getAllDevices()).find(d => d.mac === mac);
+                    if (device) {
+                        notificationManager.notifyDeviceOffline
+                            ? notificationManager.notifyDeviceOffline(device).catch(() => {})
+                            : logger.info(`watch_offline: device went offline: ${mac}`);
+                    }
                 }
             }
             // Run suspicious device detection
@@ -895,8 +915,8 @@ app.post('/api/test-settings', async (req, res) => {
 // ── Device meta (naming / tagging — Feature 8) ─────────────────────────────
 app.patch('/api/devices/:mac', validateMac, async (req, res) => {
     try {
-        const { custom_name, tags, note } = req.body;
-        await dbManager.updateDeviceMeta(req.params.mac, { custom_name, tags, note });
+        const { custom_name, tags, note, watch_connection, watch_offline } = req.body;
+        await dbManager.updateDeviceMeta(req.params.mac, { custom_name, tags, note, watch_connection, watch_offline });
         res.json({ success: true });
     } catch (error) {
         logger.error('Error updating device meta:', error.message);

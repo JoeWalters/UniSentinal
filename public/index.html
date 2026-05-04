@@ -144,6 +144,12 @@
                             <option value="watched">Watched only</option>
                             <option value="unwatched">Unwatched only</option>
                         </select>
+                        <select id="deviceSort" class="filter-select">
+                            <option value="last_seen">Last Seen</option>
+                            <option value="name">Name (A–Z)</option>
+                            <option value="ip">IP Address</option>
+                            <option value="online">Online First</option>
+                        </select>
                         <button class="btn btn-small btn-secondary" id="deviceFilterClearAll"><i class="fas fa-times"></i> Clear</button>
                     </div>
                     <span class="filter-result-count" id="deviceFilterCount"></span>
@@ -191,6 +197,12 @@
                                 <option value="all">All devices</option>
                                 <option value="watched">Watched only</option>
                                 <option value="unwatched">Unwatched only</option>
+                            </select>
+                            <select id="knownSort" class="filter-select">
+                                <option value="last_seen">Last Seen</option>
+                                <option value="name">Name (A–Z)</option>
+                                <option value="ip">IP Address</option>
+                                <option value="online">Online First</option>
                             </select>
                             <button class="btn btn-small btn-secondary" id="knownFilterClearAll"><i class="fas fa-times"></i> Clear</button>
                         </div>
@@ -386,6 +398,25 @@
                     <div class="setting-item setting-item-full">
                         <label for="editNote">Note</label>
                         <textarea id="editNote" rows="3" placeholder="Optional notes about this device" style="width:100%;resize:vertical;padding:0.5rem;border-radius:6px;border:1px solid var(--border-color);background:var(--input-bg);color:var(--text-color);"></textarea>
+                    </div>
+                </div>
+                <div class="settings-section" style="margin-top:1.25rem;">
+                    <h4 style="color:var(--text-primary);margin-bottom:12px;font-size:1rem;border-bottom:2px solid var(--accent-primary);padding-bottom:6px;"><i class="fas fa-bell"></i> Alert Settings</h4>
+                    <div class="settings-grid">
+                        <div class="setting-item">
+                            <label class="alert-toggle-label">
+                                <input type="checkbox" id="editWatchConnect">
+                                Alert when device connects
+                            </label>
+                            <small style="color:var(--text-secondary);">Re-surfaces as new each time it reconnects</small>
+                        </div>
+                        <div class="setting-item">
+                            <label class="alert-toggle-label">
+                                <input type="checkbox" id="editWatchOffline">
+                                Alert when device goes offline
+                            </label>
+                            <small style="color:var(--text-secondary);">Sends a notification when this device disconnects</small>
+                        </div>
                     </div>
                 </div>
                 <div style="margin-top:1rem;">

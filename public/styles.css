@@ -549,10 +549,6 @@ header {
     border-color: #2196F3;
 }
 
-.device-header {
-    margin-bottom: 15px;
-}
-
 .device-info h3 {
     color: var(--text-primary);
     font-size: 1.1rem;
@@ -2300,6 +2296,70 @@ footer p {
     font-size: 0.7rem;
     padding: 1px 6px;
     font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.device-tag:hover {
+    background: rgba(52, 152, 219, 0.35);
+    border-color: var(--accent-primary);
+}
+
+/* ── Online Status Badge ── */
+.device-online-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.72rem;
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.device-online-badge.online {
+    background: rgba(39, 174, 96, 0.12);
+    color: var(--accent-success);
+}
+
+.device-online-badge.offline {
+    background: rgba(149, 165, 166, 0.12);
+    color: var(--text-secondary);
+}
+
+.device-online-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.device-online-badge.online .device-online-dot {
+    background: var(--accent-success);
+    box-shadow: 0 0 0 2px rgba(39, 174, 96, 0.25);
+    animation: pulse 2s infinite;
+}
+
+.device-online-badge.offline .device-online-dot {
+    background: var(--text-secondary);
+}
+
+/* ── Alert toggle label ── */
+.alert-toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.alert-toggle-label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: var(--accent-primary);
 }
 
 [data-theme="dark"] .device-tag {

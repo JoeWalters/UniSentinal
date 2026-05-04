@@ -168,7 +168,8 @@ class DatabaseManager {
             // New columns for naming/tagging (Feature 8)
             const deviceNewCols = [
                 { name: 'custom_name', type: 'TEXT' },
-                { name: 'tags', type: 'TEXT' }
+                { name: 'tags', type: 'TEXT' },
+                { name: 'watch_offline', type: 'BOOLEAN DEFAULT 0' }
             ];
             for (const column of deviceNewCols) {
                 if (!columnNames.includes(column.name)) {
@@ -664,13 +665,15 @@ class DatabaseManager {
 
     // ── Device naming / tagging (Feature 8) ─────────────────────────
 
-    async updateDeviceMeta(mac, { custom_name, tags, note }) {
+    async updateDeviceMeta(mac, { custom_name, tags, note, watch_connection, watch_offline }) {
         try {
             const fields = [];
             const values = [];
             if (custom_name !== undefined) { fields.push('custom_name = ?'); values.push(custom_name || null); }
             if (tags !== undefined) { fields.push('tags = ?'); values.push(tags || null); }
             if (note !== undefined) { fields.push('note = ?'); values.push(note || null); }
+            if (watch_connection !== undefined) { fields.push('watch_connection = ?'); values.push(watch_connection ? 1 : 0); }
+            if (watch_offline !== undefined) { fields.push('watch_offline = ?'); values.push(watch_offline ? 1 : 0); }
             if (fields.length === 0) return;
             values.push(mac);
             this.db.prepare(`UPDATE devices SET ${fields.join(', ')} WHERE mac = ?`).run(...values);

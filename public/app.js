@@ -64,6 +64,8 @@ class UniFiSentinel {
         document.getElementById('knownFilterConnection').addEventListener('change', () => this.applyKnownDeviceFilters());
         document.getElementById('knownFilterWatch').addEventListener('change', () => this.applyKnownDeviceFilters());
         document.getElementById('knownFilterClearAll').addEventListener('click', () => this.clearKnownDeviceFilters());
+        document.getElementById('deviceSort')?.addEventListener('change', () => this.applyNewDeviceFilters());
+        document.getElementById('knownSort')?.addEventListener('change', () => this.applyKnownDeviceFilters());
 
         // Tab navigation events
         document.querySelectorAll('.tab-button').forEach(button => {
@@ -354,12 +356,20 @@ class UniFiSentinel {
             const acknowledgedAt = device.acknowledged_at
                 ? new Date(device.acknowledged_at).toLocaleDateString()
                 : 'Unknown';
+            const tagsHtml = device.tags
+                ? device.tags.split(',').map(t => `<span class="device-tag">${this.escapeHtml(t.trim())}</span>`).join('')
+                : '';
 
             return `
                 <div class="device-card ${colorClass} known-device-card" data-mac="${eMac}">
                     <div class="device-header">
                         <div class="device-info">
                             <h3>${displayName}${isWatched ? ' <span class="watch-badge" title="Watching this device"><i class="fas fa-eye"></i></span>' : ''}</h3>
+                            ${tagsHtml ? `<div class="device-tags">${tagsHtml}</div>` : ''}
+                        </div>
+                        <div class="device-online-badge ${device.is_online ? 'online' : 'offline'}">
+                            <span class="device-online-dot"></span>
+                            ${device.is_online ? 'Online' : 'Offline'}
                         </div>
                     </div>
                     <div class="device-details">
@@ -377,6 +387,9 @@ class UniFiSentinel {
                         </div>
                     </div>
                     <div class="device-actions">
+                        <button class="btn btn-outline btn-small known-details-btn" data-mac="${eMac}">
+                            <i class="fas fa-info-circle"></i> Details
+                        </button>
                         <button class="btn ${watchClass} btn-small known-watch-btn" data-mac="${eMac}" data-watching="${isWatched}">
                             <i class="fas ${watchIcon}"></i> ${watchLabel}
                         </button>
@@ -387,6 +400,19 @@ class UniFiSentinel {
                 </div>
             `;
         }).join('');
+
+        // Bind card click (open details modal)
+        grid.querySelectorAll('.known-device-card').forEach((card, index) => {
+            card.addEventListener('click', () => this.showDeviceModal(devices[index]));
+        });
+
+        // Bind details buttons
+        grid.querySelectorAll('.known-details-btn').forEach((btn, index) => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.showDeviceModal(devices[index]);
+            });
+        });
 
         // Bind events
         grid.querySelectorAll('.known-watch-btn').forEach(btn => {
@@ -407,6 +433,15 @@ class UniFiSentinel {
                 e.stopPropagation();
                 const mac = btn.getAttribute('data-mac');
                 this.forgetDevice(mac);
+            });
+        });
+
+        // Bind tag click — filter by tag in known devices
+        grid.querySelectorAll('.device-tag').forEach(tag => {
+            tag.addEventListener('click', (e) => {
+                e.stopPropagation();
+                document.getElementById('knownSearchInput').value = tag.textContent.trim();
+                this.applyKnownDeviceFilters();
             });
         });
     }
@@ -529,7 +564,7 @@ class UniFiSentinel {
         return devices.filter(d => {
             if (search) {
                 const haystack = [
-                    d.hostname, d.name, d.alias, d.ip, d.mac, d.vendor
+                    d.hostname, d.name, d.alias, d.ip, d.mac, d.vendor, d.note
                 ].filter(Boolean).join(' ').toLowerCase();
                 if (!haystack.includes(search)) return false;
             }
@@ -547,17 +582,47 @@ class UniFiSentinel {
         if (btn) btn.style.display = val.length > 0 ? 'inline-flex' : 'none';
     }
 
+    _sortDevices(devices, sortBy) {
+        const sorted = [...devices];
+        switch (sortBy) {
+            case 'name':
+                return sorted.sort((a, b) =>
+                    this.getDeviceDisplayName(a).toLowerCase().localeCompare(
+                        this.getDeviceDisplayName(b).toLowerCase()));
+            case 'ip':
+                return sorted.sort((a, b) => {
+                    const ia = (a.ip || '0.0.0.0').split('.').map(n => parseInt(n, 10) || 0);
+                    const ib = (b.ip || '0.0.0.0').split('.').map(n => parseInt(n, 10) || 0);
+                    for (let i = 0; i < 4; i++) { if (ia[i] !== ib[i]) return ia[i] - ib[i]; }
+                    return 0;
+                });
+            case 'online':
+                return sorted.sort((a, b) => (b.is_online ? 1 : 0) - (a.is_online ? 1 : 0));
+            case 'last_seen':
+            default: {
+                const ts = v => {
+                    if (!v) return 0;
+                    return typeof v === 'number' ? v * 1000 : new Date(v).getTime();
+                };
+                return sorted.sort((a, b) => ts(b.last_seen) - ts(a.last_seen));
+            }
+        }
+    }
+
     applyNewDeviceFilters() {
         this._updateClearBtn('deviceSearchInput', 'deviceSearchClear');
         const filters = this._getFilterValues('deviceSearchInput', 'filterConnection', 'filterWatch');
         const filtered = this._filterDevices(this.devices, filters);
-        this.renderDevices(filtered);
+        const sortBy = document.getElementById('deviceSort')?.value || 'last_seen';
+        this.renderDevices(this._sortDevices(filtered, sortBy));
     }
 
     clearNewDeviceFilters() {
         document.getElementById('deviceSearchInput').value = '';
         document.getElementById('filterConnection').value = 'all';
         document.getElementById('filterWatch').value = 'all';
+        const sortEl = document.getElementById('deviceSort');
+        if (sortEl) sortEl.value = 'last_seen';
         this.applyNewDeviceFilters();
     }
 
@@ -565,13 +630,16 @@ class UniFiSentinel {
         this._updateClearBtn('knownSearchInput', 'knownSearchClear');
         const filters = this._getFilterValues('knownSearchInput', 'knownFilterConnection', 'knownFilterWatch');
         const filtered = this._filterDevices(this.acknowledgedDevices, filters);
-        this.renderAcknowledgedDevices(filtered);
+        const sortBy = document.getElementById('knownSort')?.value || 'last_seen';
+        this.renderAcknowledgedDevices(this._sortDevices(filtered, sortBy));
     }
 
     clearKnownDeviceFilters() {
         document.getElementById('knownSearchInput').value = '';
         document.getElementById('knownFilterConnection').value = 'all';
         document.getElementById('knownFilterWatch').value = 'all';
+        const sortEl = document.getElementById('knownSort');
+        if (sortEl) sortEl.value = 'last_seen';
         this.applyKnownDeviceFilters();
     }
 
@@ -651,6 +719,15 @@ class UniFiSentinel {
                 }
             });
         });
+
+        // Bind tag click — filter by tag
+        grid.querySelectorAll('.device-tag').forEach(tag => {
+            tag.addEventListener('click', (e) => {
+                e.stopPropagation();
+                document.getElementById('deviceSearchInput').value = tag.textContent.trim();
+                this.applyNewDeviceFilters();
+            });
+        });
     }
 
     getDeviceDisplayName(device) {
@@ -708,6 +785,10 @@ class UniFiSentinel {
                         <h3>${displayName}${isWatched ? ' <span class="watch-badge" title="Watching this device"><i class="fas fa-eye"></i></span>' : ''}</h3>
                         ${tagsHtml ? `<div class="device-tags">${tagsHtml}</div>` : ''}
                     </div>
+                    <div class="device-online-badge ${device.is_online ? 'online' : 'offline'}">
+                        <span class="device-online-dot"></span>
+                        ${device.is_online ? 'Online' : 'Offline'}
+                    </div>
                 </div>
                 
                 <div class="device-details">
@@ -748,6 +829,14 @@ class UniFiSentinel {
         document.getElementById('editCustomName').value = device.custom_name || '';
         document.getElementById('editTags').value = device.tags || '';
         document.getElementById('editNote').value = device.note || '';
+        // Pre-fill alert config
+        const watchConnectEl = document.getElementById('editWatchConnect');
+        const watchOfflineEl = document.getElementById('editWatchOffline');
+        if (watchConnectEl) watchConnectEl.checked = !!device.watch_connection;
+        if (watchOfflineEl) watchOfflineEl.checked = !!device.watch_offline;
+        // Show/hide acknowledge button depending on whether device is already known
+        const ackBtn = document.getElementById('modalAcknowledgeBtn');
+        if (ackBtn) ackBtn.style.display = device.acknowledged ? 'none' : '';
         modal.style.display = 'block';
     }
 
@@ -812,11 +901,19 @@ class UniFiSentinel {
         const custom_name = document.getElementById('editCustomName').value.trim();
         const tags = document.getElementById('editTags').value.trim();
         const note = document.getElementById('editNote').value.trim();
+        const watch_connection = document.getElementById('editWatchConnect')?.checked ?? !!this.selectedDevice.watch_connection;
+        const watch_offline = document.getElementById('editWatchOffline')?.checked ?? !!this.selectedDevice.watch_offline;
         try {
             const resp = await fetch(`/api/devices/${encodeURIComponent(mac)}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ custom_name: custom_name || null, tags: tags || null, note: note || null })
+                body: JSON.stringify({
+                    custom_name: custom_name || null,
+                    tags: tags || null,
+                    note: note || null,
+                    watch_connection,
+                    watch_offline
+                })
             });
             if (!resp.ok) throw new Error('Failed to save');
             this.showNotification('Device info saved', 'success');
@@ -824,6 +921,8 @@ class UniFiSentinel {
             this.selectedDevice.custom_name = custom_name || null;
             this.selectedDevice.tags = tags || null;
             this.selectedDevice.note = note || null;
+            this.selectedDevice.watch_connection = watch_connection;
+            this.selectedDevice.watch_offline = watch_offline;
             // Refresh device lists
             await this.loadDevices();
             await this.loadAcknowledgedDevices();
@@ -904,6 +1003,26 @@ class UniFiSentinel {
                         <span class="detail-label">Detected by Sentinel:</span>
                         <span class="detail-value">${new Date(device.detected_at).toLocaleString()}</span>
                     </div>
+                    ${device.os_name ? `
+                    <div class="detail-row">
+                        <span class="detail-label">OS:</span>
+                        <span class="detail-value">${this.escapeHtml(device.os_name)}</span>
+                    </div>` : ''}
+                    ${device.custom_name ? `
+                    <div class="detail-row">
+                        <span class="detail-label">Custom Name:</span>
+                        <span class="detail-value">${this.escapeHtml(device.custom_name)}</span>
+                    </div>` : ''}
+                    ${device.tags ? `
+                    <div class="detail-row">
+                        <span class="detail-label">Tags:</span>
+                        <span class="detail-value">${device.tags.split(',').map(t => `<span class="device-tag">${this.escapeHtml(t.trim())}</span>`).join(' ')}</span>
+                    </div>` : ''}
+                    ${device.note ? `
+                    <div class="detail-row">
+                        <span class="detail-label">Note:</span>
+                        <span class="detail-value" style="white-space:pre-wrap;">${this.escapeHtml(device.note)}</span>
+                    </div>` : ''}
                 </div>
             </div>
 
