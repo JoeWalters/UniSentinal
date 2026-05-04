@@ -937,11 +937,20 @@ class UniFiSentinel {
 
     createDeviceDetails(device) {
         const formatBytes = (bytes) => {
-            if (bytes === 0) return '0 B';
+            if (!bytes || bytes === 0) return '0 B';
             const k = 1024;
             const sizes = ['B', 'KB', 'MB', 'GB'];
             const i = Math.floor(Math.log(bytes) / Math.log(k));
             return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        };
+        const parseDate = (val) => {
+            if (!val) return null;
+            const d = new Date(val);
+            if (!isNaN(d)) return d;
+            // Handle legacy unix-seconds stored as numeric string
+            const n = Number(val);
+            if (!isNaN(n) && n > 0) return new Date(n < 1e10 ? n * 1000 : n);
+            return null;
         };
 
         const eHostname = this.escapeHtml(device.hostname || 'Unknown Device');
@@ -997,15 +1006,15 @@ class UniFiSentinel {
                     </div>
                     <div class="detail-row">
                         <span class="detail-label">First Seen:</span>
-                        <span class="detail-value">${new Date(device.first_seen).toLocaleString()}</span>
+                        <span class="detail-value">${parseDate(device.first_seen)?.toLocaleString() ?? 'N/A'}</span>
                     </div>
                     <div class="detail-row">
                         <span class="detail-label">Last Seen:</span>
-                        <span class="detail-value">${new Date(device.last_seen).toLocaleString()}</span>
+                        <span class="detail-value">${parseDate(device.last_seen)?.toLocaleString() ?? 'N/A'}</span>
                     </div>
                     <div class="detail-row">
                         <span class="detail-label">Detected by Sentinel:</span>
-                        <span class="detail-value">${new Date(device.detected_at).toLocaleString()}</span>
+                        <span class="detail-value">${parseDate(device.detected_at)?.toLocaleString() ?? 'N/A'}</span>
                     </div>
                     ${device.os_name ? `
                     <div class="detail-row">

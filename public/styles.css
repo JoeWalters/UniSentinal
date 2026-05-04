@@ -571,6 +571,7 @@ header {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    min-width: 0;
 }
 
 .connection-type {
@@ -628,19 +629,28 @@ header {
     font-size: 0.9rem;
     color: var(--text-primary);
     font-weight: 500;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    word-break: break-word;
 }
 
 .device-actions {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
     gap: 6px;
     margin-top: auto;
     padding-top: 15px;
-    flex-wrap: wrap;
 }
 
 .btn-small {
     padding: 7px 11px;
     font-size: 0.82rem;
+    justify-content: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .logs-header .btn-small {
@@ -1287,13 +1297,12 @@ footer p {
     }
     
     .device-actions {
-        flex-direction: column;
-        gap: 8px;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
         margin-top: 12px;
     }
     
     .device-actions .btn {
-        width: 100%;
         justify-content: center;
     }
     
@@ -1904,9 +1913,21 @@ footer p {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
+    gap: 8px;
     margin-bottom: 15px;
     position: relative;
     z-index: 1;
+    min-width: 0;
+}
+
+.device-header .device-info {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+}
+
+.device-header .device-online-badge {
+    flex-shrink: 0;
 }
 
 .device-name-section {

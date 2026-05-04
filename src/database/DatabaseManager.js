@@ -186,7 +186,7 @@ class DatabaseManager {
                 name = ?, ip = ?, hostname = ?, vendor = ?, last_seen = ?,
                 is_online = ?, is_blocked = ?, device_type = ?, os_name = ?,
                 uptime = ?, is_wired = ?, ap_mac = ?, network = ?,
-                signal = ?, tx_bytes = ?, rx_bytes = ?
+                signal = ?, tx_bytes = ?, rx_bytes = ?, note = COALESCE(?, note)
             WHERE mac = ?
         `);
 
@@ -233,6 +233,7 @@ class DatabaseManager {
                         device.signal,
                         device.tx_bytes,
                         device.rx_bytes,
+                        device.note || null,
                         device.mac
                     );
                 }
