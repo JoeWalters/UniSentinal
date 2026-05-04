@@ -1035,11 +1035,11 @@ class UniFiSentinel {
                     text-align: center;
                     margin-bottom: 25px;
                     padding-bottom: 20px;
-                    border-bottom: 1px solid #e9ecef;
+                    border-bottom: 1px solid var(--border-color);
                 }
                 
                 .device-summary h4 {
-                    color: #2c3e50;
+                    color: var(--text-primary);
                     margin-bottom: 8px;
                 }
                 
@@ -1053,16 +1053,16 @@ class UniFiSentinel {
                     grid-template-columns: 1fr 1fr;
                     gap: 15px;
                     padding: 8px 0;
-                    border-bottom: 1px solid #f8f9fa;
+                    border-bottom: 1px solid var(--border-color);
                 }
                 
                 .detail-row .detail-label {
                     font-weight: 600;
-                    color: #7f8c8d;
+                    color: var(--text-secondary);
                 }
                 
                 .detail-row .detail-value {
-                    color: #2c3e50;
+                    color: var(--text-primary);
                 }
             </style>
         `;

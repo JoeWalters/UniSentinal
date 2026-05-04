@@ -501,7 +501,7 @@ class UnifiController {
                 last_seen: client.last_seen || Date.now(),
                 device_type: this.getDeviceType(client),
                 os_name: client.os_name ? String(client.os_name) : null,
-                note: client.noted ? String(client.noted) : null,
+                note: client.note ? String(client.note) : null,
                 uptime: client.uptime || null,
                 is_wired: client.is_wired || false,
                 ap_mac: client.ap_mac || null,
