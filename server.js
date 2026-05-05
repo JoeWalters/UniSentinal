@@ -186,9 +186,7 @@ function startScanInterval(intervalMs) {
                     if (!nowOnlineMacs.has(mac)) {
                         const device = (await dbManager.getAllDevices()).find(d => d.mac === mac);
                         if (device) {
-                            notificationManager.notifyDeviceOffline
-                                ? notificationManager.notifyDeviceOffline(device).catch(() => {})
-                                : logger.info(`watch_offline: device went offline: ${mac}`);
+                            notificationManager.notifyDeviceOffline(device).catch(() => {});
                         }
                     }
                 }

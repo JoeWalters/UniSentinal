@@ -296,6 +296,7 @@ class DatabaseManager {
             const devicesByMac = {};
             for (const d of scannedDevices) devicesByMac[d.mac] = d;
 
+            const MIN_RECONNECT_COOLDOWN_MS = 10 * 60 * 1000; // 10-minute fallback when uptime is unavailable
             const now = Date.now();
             const alertStmt = this.db.prepare(
                 `UPDATE devices SET acknowledged = 0, watch_last_alerted_at = ? WHERE mac = ?`
@@ -312,8 +313,13 @@ class DatabaseManager {
                     shouldAlert = true; // No previous alert recorded
                 } else {
                     const timeSinceAlertMs = now - new Date(dbDevice.watch_last_alerted_at).getTime();
-                    // Alert if device reconnected after last alert (uptime restarted)
-                    shouldAlert = timeSinceAlertMs > uptimeMs;
+                    if (uptimeMs > 0) {
+                        // Alert if device reconnected after last alert (uptime restarted)
+                        shouldAlert = timeSinceAlertMs > uptimeMs;
+                    } else {
+                        // No uptime data — guard against flooding with a minimum cooldown
+                        shouldAlert = timeSinceAlertMs > MIN_RECONNECT_COOLDOWN_MS;
+                    }
                 }
 
                 if (shouldAlert) {

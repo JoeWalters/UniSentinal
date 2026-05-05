@@ -162,6 +162,16 @@ class NotificationManager {
     }
 
     /**
+     * Convenience: watched device went offline.
+     */
+    async notifyDeviceOffline(device) {
+        const name = device.hostname || device.name || device.ip || device.mac;
+        const title = 'Device Offline';
+        const message = `${name} has left the network.\nMAC: ${device.mac}\nIP: ${device.ip || 'unknown'}`;
+        await this.send(title, message, { tags: 'warning,computer' });
+    }
+
+    /**
      * Convenience: suspicious device alert.
      */
     async notifySuspiciousDevice(alertType, details) {
