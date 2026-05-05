@@ -166,31 +166,30 @@ function startScanInterval(intervalMs) {
                     .map(d => d.mac)
             );
 
-            const newDevices = await unifiController.scanForNewDevices();
-            if (newDevices.length > 0) {
-                await dbManager.addNewDevices(newDevices);
-                logger.info(`Periodic scan found ${newDevices.length} new device(s)`);
-                // Send push notifications for new devices
-                for (const device of newDevices) {
-                    notificationManager.notifyNewDevice(device).catch(() => {});
+            const allScannedDevices = await unifiController.scanForNewDevices();
+            if (allScannedDevices.length > 0) {
+                const { newDevices, watchAlertDevices } = await dbManager.addNewDevices(allScannedDevices);
+                if (newDevices.length > 0) {
+                    logger.info(`Periodic scan found ${newDevices.length} genuinely new device(s)`);
+                    // Send push notifications only for truly new devices
+                    for (const device of newDevices) {
+                        notificationManager.notifyNewDevice(device).catch(() => {});
+                    }
                 }
-            }
-            // Re-check watch alerts and send push notifications for watched reconnections
-            const newWatched = await dbManager.getUnacknowledgedDevices();
-            for (const d of newWatched) {
-                if (d.watch_connection) {
+                // Notify watched devices that just reconnected (detected by uptime reset)
+                for (const d of watchAlertDevices) {
                     notificationManager.notifyWatchedDevice(d).catch(() => {});
                 }
-            }
-            // Offline alerts: notify if a previously-online watch_offline device is now offline
-            const nowOnlineMacs = new Set(newDevices.filter(d => d.is_online).map(d => d.mac));
-            for (const mac of prevOnline) {
-                if (!nowOnlineMacs.has(mac)) {
-                    const device = (await dbManager.getAllDevices()).find(d => d.mac === mac);
-                    if (device) {
-                        notificationManager.notifyDeviceOffline
-                            ? notificationManager.notifyDeviceOffline(device).catch(() => {})
-                            : logger.info(`watch_offline: device went offline: ${mac}`);
+                // Offline alerts: notify if a previously-online watch_offline device is now offline
+                const nowOnlineMacs = new Set(allScannedDevices.filter(d => d.is_online).map(d => d.mac));
+                for (const mac of prevOnline) {
+                    if (!nowOnlineMacs.has(mac)) {
+                        const device = (await dbManager.getAllDevices()).find(d => d.mac === mac);
+                        if (device) {
+                            notificationManager.notifyDeviceOffline
+                                ? notificationManager.notifyDeviceOffline(device).catch(() => {})
+                                : logger.info(`watch_offline: device went offline: ${mac}`);
+                        }
                     }
                 }
             }

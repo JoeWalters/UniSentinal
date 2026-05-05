@@ -169,7 +169,7 @@ class DatabaseManager {
     }
 
     async addNewDevices(devices) {
-        if (!devices || devices.length === 0) return;
+        if (!devices || devices.length === 0) return { newDevices: [], watchAlertDevices: [] };
 
         // Use INSERT OR IGNORE to avoid overwriting existing rows, then UPDATE
         // only the mutable fields — this preserves acknowledged / acknowledged_at.
@@ -191,10 +191,11 @@ class DatabaseManager {
         `);
 
         try {
+            const newMacs = new Set();
             const transaction = this.db.transaction((devices) => {
                 for (const device of devices) {
                     const now = new Date().toISOString();
-                    insertDevice.run(
+                    const result = insertDevice.run(
                         device.mac,
                         device.name || null,
                         device.ip,
@@ -216,6 +217,9 @@ class DatabaseManager {
                         device.rx_bytes,
                         now
                     );
+                    if (result.changes > 0) {
+                        newMacs.add(device.mac);
+                    }
                     updateDevice.run(
                         device.name || null,
                         device.ip,
@@ -240,12 +244,17 @@ class DatabaseManager {
             });
 
             transaction(devices);
-            console.log(`Added ${devices.length} new device(s) to database`);
+
+            const newDevices = devices.filter(d => newMacs.has(d.mac));
+            console.log(`Scan complete: ${devices.length} total, ${newDevices.length} genuinely new device(s)`);
 
             // Re-alert watched devices that have reconnected since the last alert
-            this._checkWatchAlerts(devices);
+            const watchAlertMacs = this._checkWatchAlerts(devices);
+            const watchAlertDevices = devices.filter(d => watchAlertMacs.has(d.mac));
 
             this._recordConnectionEvents(devices);
+
+            return { newDevices, watchAlertDevices };
         } catch (error) {
             console.error('Error adding devices:', error);
             throw error;
@@ -276,12 +285,13 @@ class DatabaseManager {
     }
 
     _checkWatchAlerts(scannedDevices) {
+        const triggeredMacs = new Set();
         try {
             const watched = this.db.prepare(
                 `SELECT mac, watch_last_alerted_at FROM devices WHERE watch_connection = 1 AND acknowledged = 1`
             ).all();
 
-            if (watched.length === 0) return;
+            if (watched.length === 0) return triggeredMacs;
 
             const devicesByMac = {};
             for (const d of scannedDevices) devicesByMac[d.mac] = d;
@@ -308,6 +318,7 @@ class DatabaseManager {
 
                 if (shouldAlert) {
                     alertStmt.run(new Date(now).toISOString(), dbDevice.mac);
+                    triggeredMacs.add(dbDevice.mac);
                     console.log(`Watch alert triggered for device: ${dbDevice.mac}`);
                 }
             }
@@ -315,6 +326,7 @@ class DatabaseManager {
             console.error('Error checking watch alerts:', error);
             // Don't throw - watch alerts are non-critical
         }
+        return triggeredMacs;
     }
 
     async getUnacknowledgedDevices() {
