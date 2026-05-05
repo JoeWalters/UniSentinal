@@ -1723,6 +1723,8 @@ class UniFiSentinel {
 
         // Notifications
         document.getElementById('notificationsEnabled').checked = settings.NOTIFICATIONS_ENABLED === 'true';
+        document.getElementById('notifyNewDevice').checked = settings.NOTIFY_NEW_DEVICE !== 'false';
+        document.getElementById('notifyWatchedDevice').checked = settings.NOTIFY_WATCHED_DEVICE !== 'false';
         // Token/user fields show placeholder if set
         document.getElementById('pushoverToken').placeholder = settings.PUSHOVER_TOKEN === '[SET]' ? '(already set – enter to change)' : 'Pushover API Token';
         document.getElementById('pushoverUser').placeholder = settings.PUSHOVER_USER === '[SET]' ? '(already set – enter to change)' : 'Pushover User Key';
@@ -1756,6 +1758,8 @@ class UniFiSentinel {
             SCAN_INTERVAL: document.getElementById('scanInterval').value.trim(),
             // Notifications
             NOTIFICATIONS_ENABLED: document.getElementById('notificationsEnabled').checked ? 'true' : 'false',
+            NOTIFY_NEW_DEVICE: document.getElementById('notifyNewDevice').checked ? 'true' : 'false',
+            NOTIFY_WATCHED_DEVICE: document.getElementById('notifyWatchedDevice').checked ? 'true' : 'false',
             PUSHOVER_PRIORITY: document.getElementById('pushoverPriority').value.trim(),
             PUSHOVER_SOUND: document.getElementById('pushoverSound').value.trim() || 'default',
             NTFY_URL: document.getElementById('ntfyUrl').value.trim() || 'https://ntfy.sh',

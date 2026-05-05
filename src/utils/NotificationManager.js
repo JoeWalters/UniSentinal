@@ -10,6 +10,8 @@ class NotificationManager {
 
     _loadConfig() {
         this.enabled = process.env.NOTIFICATIONS_ENABLED === 'true';
+        this.notifyNewDevice_enabled = process.env.NOTIFY_NEW_DEVICE !== 'false';
+        this.notifyWatchedDevice_enabled = process.env.NOTIFY_WATCHED_DEVICE !== 'false';
 
         this.providers.pushover = {
             enabled: !!(process.env.PUSHOVER_TOKEN && process.env.PUSHOVER_USER),
@@ -143,6 +145,7 @@ class NotificationManager {
      * Convenience: new device detected.
      */
     async notifyNewDevice(device) {
+        if (!this.notifyNewDevice_enabled) return;
         const name = device.hostname || device.name || device.ip || device.mac;
         const vendor = device.vendor ? ` (${device.vendor})` : '';
         const conn = device.is_wired ? 'wired' : 'wireless';
@@ -155,6 +158,7 @@ class NotificationManager {
      * Convenience: watched device reconnected.
      */
     async notifyWatchedDevice(device) {
+        if (!this.notifyWatchedDevice_enabled) return;
         const name = device.hostname || device.name || device.ip || device.mac;
         const title = 'Watched Device Reconnected';
         const message = `${name} has joined the network.\nMAC: ${device.mac}\nIP: ${device.ip || 'unknown'}`;

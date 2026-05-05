@@ -159,36 +159,17 @@ function startScanInterval(intervalMs) {
         try {
             if (!unifiController.isConfigured()) return;
 
-            // Snapshot which watch_offline devices were online BEFORE this scan
-            const prevOnline = new Set(
-                (await dbManager.getAllDevices())
-                    .filter(d => d.is_online && d.watch_offline)
-                    .map(d => d.mac)
-            );
-
             const allScannedDevices = await unifiController.scanForNewDevices();
             if (allScannedDevices.length > 0) {
                 const { newDevices, watchAlertDevices } = await dbManager.addNewDevices(allScannedDevices);
                 if (newDevices.length > 0) {
                     logger.info(`Periodic scan found ${newDevices.length} genuinely new device(s)`);
-                    // Send push notifications only for truly new devices
                     for (const device of newDevices) {
                         notificationManager.notifyNewDevice(device).catch(() => {});
                     }
                 }
-                // Notify watched devices that just reconnected (detected by uptime reset)
                 for (const d of watchAlertDevices) {
                     notificationManager.notifyWatchedDevice(d).catch(() => {});
-                }
-                // Offline alerts: notify if a previously-online watch_offline device is now offline
-                const nowOnlineMacs = new Set(allScannedDevices.filter(d => d.is_online).map(d => d.mac));
-                for (const mac of prevOnline) {
-                    if (!nowOnlineMacs.has(mac)) {
-                        const device = (await dbManager.getAllDevices()).find(d => d.mac === mac);
-                        if (device) {
-                            notificationManager.notifyDeviceOffline(device).catch(() => {});
-                        }
-                    }
                 }
             }
 
@@ -714,7 +695,9 @@ app.get('/api/settings', (req, res) => {
             SCAN_INTERVAL: process.env.SCAN_INTERVAL || '30',
             // Notifications
             NOTIFICATIONS_ENABLED: process.env.NOTIFICATIONS_ENABLED || 'false',
-            PUSHOVER_TOKEN: process.env.PUSHOVER_TOKEN ? '[SET]' : '',
+            NOTIFY_NEW_DEVICE: process.env.NOTIFY_NEW_DEVICE !== 'false' ? 'true' : 'false',
+            NOTIFY_WATCHED_DEVICE: process.env.NOTIFY_WATCHED_DEVICE !== 'false' ? 'true' : 'false',
+            PUSHOVER_TOKEN: process.env.PUSHOVER_TOKEN ? '[SET]' : ''
             PUSHOVER_USER: process.env.PUSHOVER_USER ? '[SET]' : '',
             PUSHOVER_PRIORITY: process.env.PUSHOVER_PRIORITY || '0',
             PUSHOVER_SOUND: process.env.PUSHOVER_SOUND || 'default',

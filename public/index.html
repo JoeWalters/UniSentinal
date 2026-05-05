@@ -534,10 +534,30 @@
                             <div class="settings-toggle-row">
                                 <div>
                                     <span class="toggle-title">Enable push notifications</span>
-                                    <span class="toggle-sub">Send alerts when new devices are detected</span>
+                                    <span class="toggle-sub">Master switch for all push alerts</span>
                                 </div>
                                 <label class="switch">
                                     <input type="checkbox" id="notificationsEnabled">
+                                    <span class="switch-slider"></span>
+                                </label>
+                            </div>
+                            <div class="settings-toggle-row">
+                                <div>
+                                    <span class="toggle-title">New device detected</span>
+                                    <span class="toggle-sub">Alert when an unknown device joins the network</span>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="notifyNewDevice">
+                                    <span class="switch-slider"></span>
+                                </label>
+                            </div>
+                            <div class="settings-toggle-row">
+                                <div>
+                                    <span class="toggle-title">Watched device comes online</span>
+                                    <span class="toggle-sub">Alert when a device marked as watched reconnects</span>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="notifyWatchedDevice">
                                     <span class="switch-slider"></span>
                                 </label>
                             </div>
