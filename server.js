@@ -697,13 +697,17 @@ app.get('/api/settings', (req, res) => {
             NOTIFICATIONS_ENABLED: process.env.NOTIFICATIONS_ENABLED || 'false',
             NOTIFY_NEW_DEVICE: process.env.NOTIFY_NEW_DEVICE !== 'false' ? 'true' : 'false',
             NOTIFY_WATCHED_DEVICE: process.env.NOTIFY_WATCHED_DEVICE !== 'false' ? 'true' : 'false',
-            PUSHOVER_TOKEN: process.env.PUSHOVER_TOKEN ? '[SET]' : ''
+            PUSHOVER_ENABLED: process.env.PUSHOVER_ENABLED !== 'false' ? 'true' : 'false',
+            PUSHOVER_TOKEN: process.env.PUSHOVER_TOKEN ? '[SET]' : '',
             PUSHOVER_USER: process.env.PUSHOVER_USER ? '[SET]' : '',
             PUSHOVER_PRIORITY: process.env.PUSHOVER_PRIORITY || '0',
             PUSHOVER_SOUND: process.env.PUSHOVER_SOUND || 'default',
+            NTFY_ENABLED: process.env.NTFY_ENABLED !== 'false' ? 'true' : 'false',
             NTFY_URL: process.env.NTFY_URL || 'https://ntfy.sh',
             NTFY_TOPIC: process.env.NTFY_TOPIC || '',
             NTFY_TOKEN: process.env.NTFY_TOKEN ? '[SET]' : '',
+            NTFY_USERNAME: process.env.NTFY_USERNAME || '',
+            NTFY_PASSWORD: process.env.NTFY_PASSWORD ? '[SET]' : '',
             NTFY_PRIORITY: process.env.NTFY_PRIORITY || 'default',
             // Auth
             UI_AUTH_ENABLED: process.env.UI_AUTH_ENABLED || 'false',

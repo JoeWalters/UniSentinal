@@ -1725,6 +1725,8 @@ class UniFiSentinel {
         document.getElementById('notificationsEnabled').checked = settings.NOTIFICATIONS_ENABLED === 'true';
         document.getElementById('notifyNewDevice').checked = settings.NOTIFY_NEW_DEVICE !== 'false';
         document.getElementById('notifyWatchedDevice').checked = settings.NOTIFY_WATCHED_DEVICE !== 'false';
+        document.getElementById('pushoverEnabled').checked = settings.PUSHOVER_ENABLED !== 'false';
+        document.getElementById('ntfyEnabled').checked = settings.NTFY_ENABLED !== 'false';
         // Token/user fields show placeholder if set
         document.getElementById('pushoverToken').placeholder = settings.PUSHOVER_TOKEN === '[SET]' ? '(already set – enter to change)' : 'Pushover API Token';
         document.getElementById('pushoverUser').placeholder = settings.PUSHOVER_USER === '[SET]' ? '(already set – enter to change)' : 'Pushover User Key';
@@ -1732,7 +1734,9 @@ class UniFiSentinel {
         if (settings.PUSHOVER_SOUND) document.getElementById('pushoverSound').value = settings.PUSHOVER_SOUND;
         if (settings.NTFY_URL) document.getElementById('ntfyUrl').value = settings.NTFY_URL;
         if (settings.NTFY_TOPIC) document.getElementById('ntfyTopic').value = settings.NTFY_TOPIC;
+        document.getElementById('ntfyUsername').value = settings.NTFY_USERNAME || '';
         document.getElementById('ntfyToken').placeholder = settings.NTFY_TOKEN === '[SET]' ? '(already set – enter to change)' : 'ntfy access token (optional)';
+        document.getElementById('ntfyPassword').placeholder = settings.NTFY_PASSWORD === '[SET]' ? '(already set – enter to change)' : 'ntfy password (optional)';
         if (settings.NTFY_PRIORITY) document.getElementById('ntfyPriority').value = settings.NTFY_PRIORITY;
 
         // Auth
@@ -1746,6 +1750,7 @@ class UniFiSentinel {
         const pushoverToken = document.getElementById('pushoverToken').value.trim();
         const pushoverUser = document.getElementById('pushoverUser').value.trim();
         const ntfyToken = document.getElementById('ntfyToken').value.trim();
+        const ntfyPassword = document.getElementById('ntfyPassword').value.trim();
         const uiPassword = document.getElementById('uiPassword').value.trim();
 
         const settings = {
@@ -1760,10 +1765,13 @@ class UniFiSentinel {
             NOTIFICATIONS_ENABLED: document.getElementById('notificationsEnabled').checked ? 'true' : 'false',
             NOTIFY_NEW_DEVICE: document.getElementById('notifyNewDevice').checked ? 'true' : 'false',
             NOTIFY_WATCHED_DEVICE: document.getElementById('notifyWatchedDevice').checked ? 'true' : 'false',
+            PUSHOVER_ENABLED: document.getElementById('pushoverEnabled').checked ? 'true' : 'false',
+            NTFY_ENABLED: document.getElementById('ntfyEnabled').checked ? 'true' : 'false',
             PUSHOVER_PRIORITY: document.getElementById('pushoverPriority').value.trim(),
             PUSHOVER_SOUND: document.getElementById('pushoverSound').value.trim() || 'default',
             NTFY_URL: document.getElementById('ntfyUrl').value.trim() || 'https://ntfy.sh',
             NTFY_TOPIC: document.getElementById('ntfyTopic').value.trim(),
+            NTFY_USERNAME: document.getElementById('ntfyUsername').value.trim(),
             NTFY_PRIORITY: document.getElementById('ntfyPriority').value,
             // Auth
             UI_AUTH_ENABLED: document.getElementById('uiAuthEnabled').checked ? 'true' : 'false',
@@ -1774,6 +1782,7 @@ class UniFiSentinel {
         if (pushoverToken) settings.PUSHOVER_TOKEN = pushoverToken;
         if (pushoverUser) settings.PUSHOVER_USER = pushoverUser;
         if (ntfyToken) settings.NTFY_TOKEN = ntfyToken;
+        if (ntfyPassword) settings.NTFY_PASSWORD = ntfyPassword;
         if (uiPassword) settings.UI_PASSWORD = uiPassword;
 
         // Remove empty values (except password which should be sent if provided)

@@ -3039,10 +3039,15 @@ footer p {
     content: '\f107';
     font-family: 'Font Awesome 6 Free';
     font-weight: 900;
-    margin-left: auto;
+    margin-left: 8px;
     color: var(--text-secondary);
     font-size: 0.85rem;
     transition: transform 0.2s;
+}
+
+.switch-inline {
+    margin-left: auto;
+    flex-shrink: 0;
 }
 
 .provider-details[open] summary::after {

@@ -564,7 +564,13 @@
                         </div>
                         <div class="notification-providers">
                             <details class="provider-details">
-                                <summary><i class="fas fa-mobile-alt"></i> Pushover</summary>
+                                <summary>
+                                    <i class="fas fa-mobile-alt"></i> Pushover
+                                    <label class="switch switch-inline" onclick="event.stopPropagation()">
+                                        <input type="checkbox" id="pushoverEnabled" checked>
+                                        <span class="switch-slider"></span>
+                                    </label>
+                                </summary>
                                 <div class="settings-grid">
                                     <div class="setting-item">
                                         <label for="pushoverToken">API Token</label>
@@ -585,7 +591,13 @@
                                 </div>
                             </details>
                             <details class="provider-details">
-                                <summary><i class="fas fa-paper-plane"></i> ntfy</summary>
+                                <summary>
+                                    <i class="fas fa-paper-plane"></i> ntfy
+                                    <label class="switch switch-inline" onclick="event.stopPropagation()">
+                                        <input type="checkbox" id="ntfyEnabled" checked>
+                                        <span class="switch-slider"></span>
+                                    </label>
+                                </summary>
                                 <div class="settings-grid">
                                     <div class="setting-item">
                                         <label for="ntfyUrl">Server URL</label>
@@ -596,8 +608,16 @@
                                         <input type="text" id="ntfyTopic" placeholder="my-unisentinal-alerts">
                                     </div>
                                     <div class="setting-item">
-                                        <label for="ntfyToken">Token <span class="setting-hint">(optional)</span></label>
+                                        <label for="ntfyToken">Access Token <span class="setting-hint">(optional)</span></label>
                                         <input type="password" id="ntfyToken" placeholder="Leave blank to keep existing">
+                                    </div>
+                                    <div class="setting-item">
+                                        <label for="ntfyUsername">Username <span class="setting-hint">(optional, for Basic Auth)</span></label>
+                                        <input type="text" id="ntfyUsername" placeholder="ntfy username">
+                                    </div>
+                                    <div class="setting-item">
+                                        <label for="ntfyPassword">Password <span class="setting-hint">(optional, for Basic Auth)</span></label>
+                                        <input type="password" id="ntfyPassword" placeholder="Leave blank to keep existing">
                                     </div>
                                     <div class="setting-item">
                                         <label for="ntfyPriority">Priority</label>

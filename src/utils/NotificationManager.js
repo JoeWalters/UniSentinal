@@ -14,7 +14,7 @@ class NotificationManager {
         this.notifyWatchedDevice_enabled = process.env.NOTIFY_WATCHED_DEVICE !== 'false';
 
         this.providers.pushover = {
-            enabled: !!(process.env.PUSHOVER_TOKEN && process.env.PUSHOVER_USER),
+            enabled: process.env.PUSHOVER_ENABLED !== 'false' && !!(process.env.PUSHOVER_TOKEN && process.env.PUSHOVER_USER),
             token: process.env.PUSHOVER_TOKEN || '',
             user: process.env.PUSHOVER_USER || '',
             priority: parseInt(process.env.PUSHOVER_PRIORITY || '0', 10),
@@ -22,10 +22,12 @@ class NotificationManager {
         };
 
         this.providers.ntfy = {
-            enabled: !!(process.env.NTFY_TOPIC),
+            enabled: process.env.NTFY_ENABLED !== 'false' && !!(process.env.NTFY_TOPIC),
             url: (process.env.NTFY_URL || 'https://ntfy.sh').replace(/\/$/, ''),
             topic: process.env.NTFY_TOPIC || '',
             token: process.env.NTFY_TOKEN || '',
+            username: process.env.NTFY_USERNAME || '',
+            password: process.env.NTFY_PASSWORD || '',
             priority: process.env.NTFY_PRIORITY || 'default'
         };
     }
@@ -104,7 +106,13 @@ class NotificationManager {
 
         if (opts.tags) headers['Tags'] = opts.tags;
         if (opts.url) headers['Click'] = opts.url;
-        if (cfg.token) headers['Authorization'] = `Bearer ${cfg.token}`;
+        if (cfg.username && cfg.password) {
+            // Basic Auth (username + password)
+            headers['Authorization'] = 'Basic ' + Buffer.from(`${cfg.username}:${cfg.password}`).toString('base64');
+        } else if (cfg.token) {
+            // Bearer token
+            headers['Authorization'] = `Bearer ${cfg.token}`;
+        }
 
         await axios.post(targetUrl, message, {
             headers,
