@@ -600,7 +600,7 @@ class UnifiController {
 
     // Helper method to get vendor information
     getVendorName(client) {
-        // Priority: oui -> dev_vendor -> vendor_oui
+        // Priority: oui -> dev_vendor -> vendor_oui -> fingerprint vendor
         if (client.oui && typeof client.oui === 'string' && client.oui.trim() !== '') {
             return client.oui.trim();
         }
@@ -611,6 +611,14 @@ class UnifiController {
         
         if (client.vendor_oui && typeof client.vendor_oui === 'string' && client.vendor_oui.trim() !== '') {
             return client.vendor_oui.trim();
+        }
+
+        // Check UniFi fingerprint data for vendor
+        if (client.fingerprint) {
+            const fpVendor = client.fingerprint.vendor || client.fingerprint.dev_vendor;
+            if (fpVendor && typeof fpVendor === 'string' && fpVendor.trim() !== '') {
+                return fpVendor.trim();
+            }
         }
         
         return null;
@@ -649,7 +657,7 @@ class UnifiController {
 
     // Helper method to get the best available device name
     getDeviceName(client) {
-        // Priority order: name -> hostname -> alias -> vendor + MAC -> Unknown Device
+        // Priority order: name -> hostname -> alias -> fingerprint -> vendor + MAC -> Unknown Device
         if (client.name && typeof client.name === 'string' && client.name.trim() !== '') {
             return client.name.trim();
         }
@@ -660,6 +668,21 @@ class UnifiController {
         
         if (client.alias && typeof client.alias === 'string' && client.alias.trim() !== '') {
             return client.alias.trim();
+        }
+
+        // Check UniFi fingerprint data for device name (e.g., "Nintendo Switch", "iPhone 14")
+        if (client.fingerprint) {
+            const fpName = client.fingerprint.computed_dev_name || client.fingerprint.dev_name || client.fingerprint.model_display;
+            if (fpName && typeof fpName === 'string' && fpName.trim() !== '') {
+                const shortMac = client.mac ? client.mac.slice(-5) : '';
+                return shortMac ? `${fpName.trim()} ${shortMac}` : fpName.trim();
+            }
+        }
+
+        // Check top-level dev_name (some UniFi versions expose this directly)
+        if (client.dev_name && typeof client.dev_name === 'string' && client.dev_name.trim() !== '') {
+            const shortMac = client.mac ? client.mac.slice(-5) : '';
+            return shortMac ? `${client.dev_name.trim()} ${shortMac}` : client.dev_name.trim();
         }
         
         // Try to create a meaningful name from vendor info
