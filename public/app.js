@@ -29,7 +29,6 @@ class UniFiSentinel {
         this.loadVersion();
         this.startAutoRefresh();
         this.checkAuthStatus();
-        this.loadAlerts();
     }
 
     bindEvents() {
@@ -251,6 +250,12 @@ class UniFiSentinel {
     }
 
     async acknowledgeDevice(mac) {
+        // Add visual feedback immediately
+        const card = document.querySelector(`.device-card[data-mac="${mac}"]`);
+        if (card) {
+            card.classList.add('acknowledging');
+        }
+
         try {
             const response = await fetch(`/api/devices/${mac}/acknowledge`, {
                 method: 'POST'
@@ -262,6 +267,10 @@ class UniFiSentinel {
             await this.loadDevices();
             await this.loadAcknowledgedDevices();
         } catch (error) {
+            // Remove visual feedback on error
+            if (card) {
+                card.classList.remove('acknowledging');
+            }
             console.error('Error acknowledging device:', error);
             this.showError('Failed to acknowledge device');
         }
@@ -1356,7 +1365,6 @@ class UniFiSentinel {
             console.log('🔄 Auto-refreshing data...');
             await this.loadDevices();
             await this.checkStatus();
-            await this.loadAlerts();
             
             // Also refresh parental controls data to show block/unblock status changes
             const currentTab = document.querySelector('.tab-button.active')?.getAttribute('data-tab');
