@@ -24,6 +24,7 @@ const DatabaseManager = require('./src/database/DatabaseManager');
 const ParentalControlsManager = require('./src/controllers/ParentalControlsManager');
 const Logger = require('./src/utils/Logger');
 const CredentialManager = require('./src/utils/CredentialManager');
+const { validateSettingsPayload, applySettingsToEnv } = require('./src/utils/envFile');
 const NotificationManager = require('./src/utils/NotificationManager');
 
 const app = express();
@@ -729,21 +730,37 @@ app.post('/api/settings', mutationLimiter, (req, res) => {
         const settings = req.body;
         const envPath = ENV_PATH;
         const configDir = path.dirname(envPath);
-        
+
+        // Validate BEFORE any filesystem side effect so a rejected payload
+        // leaves .env byte-identical.
+        const { values, ignoredKeys, invalid } = validateSettingsPayload(settings);
+        if (invalid.length > 0) {
+            const names = invalid.map(item => item.key).join(', ');
+            logger.warn(`Rejected settings: invalid values for ${names}`);
+            return res.status(400).json({ error: `Invalid value for ${names}`, invalid, ignoredKeys });
+        }
+
+        if (ignoredKeys.length > 0) {
+            logger.warn(`Ignoring non-writable settings keys: ${ignoredKeys.join(', ')}`);
+        }
+
         logger.info(`Attempting to save settings to: ${envPath}`);
         logger.info(`Config directory: ${configDir}`);
         logger.info('Settings received:', credentialManager.sanitizeForLogging(settings));
-        
-        // Encrypt sensitive credentials before storing
-        const encryptedSettings = credentialManager.encryptSettings(settings);
+
+        // Encrypt sensitive credentials before storing (only validated values)
+        const encryptedSettings = credentialManager.encryptSettings(values);
         logger.info('Settings after encryption:', credentialManager.sanitizeForLogging(encryptedSettings));
-        
-        // Ensure config directory exists with proper permissions
+
+        // envFileCreated must be computed from a stat taken BEFORE the write.
+        const envExisted = fs.existsSync(envPath);
+
+        // Ensure config directory exists with proper permissions (not widened to 0755)
         if (!fs.existsSync(configDir)) {
             logger.info(`Creating config directory: ${configDir}`);
-            fs.mkdirSync(configDir, { recursive: true, mode: 0o755 });
+            fs.mkdirSync(configDir, { recursive: true, mode: 0o700 });
         }
-        
+
         // Check if we can write to the config directory
         try {
             fs.accessSync(configDir, fs.constants.W_OK);
@@ -752,7 +769,7 @@ app.post('/api/settings', mutationLimiter, (req, res) => {
             logger.error(`Config directory is not writable: ${accessError.message}`);
             throw new Error(`Cannot write to config directory: ${configDir}`);
         }
-        
+
         // Read current .env file or create new content
         let envContent = '';
         if (fs.existsSync(envPath)) {
@@ -765,23 +782,19 @@ app.post('/api/settings', mutationLimiter, (req, res) => {
         }
 
         // Update or add settings (using encrypted versions)
-        Object.keys(encryptedSettings).forEach(key => {
-            if (encryptedSettings[key] !== undefined && encryptedSettings[key] !== '') {
-                const pattern = new RegExp(`^${key}=.*`, 'm');
-                const newLine = `${key}=${encryptedSettings[key]}`;
-                
-                if (pattern.test(envContent)) {
-                    envContent = envContent.replace(pattern, newLine);
-                } else {
-                    envContent += `${newLine}\n`;
-                }
-            }
-        });
+        envContent = applySettingsToEnv(envContent, encryptedSettings);
 
         // Write updated .env file
         logger.info('Writing .env file');
-        fs.writeFileSync(envPath, envContent, { mode: 0o644 });
-        
+        fs.writeFileSync(envPath, envContent, { mode: 0o600 });
+        // The mode option only applies when the file is created, so an existing
+        // (e.g. 0644) file must be tightened explicitly.
+        try {
+            fs.chmodSync(envPath, 0o600);
+        } catch (chmodError) {
+            logger.warn(`Could not chmod .env to 0600: ${chmodError.message}`);
+        }
+
         // Update process.env with decrypted values (for runtime use)
         const decryptedSettings = credentialManager.decryptSettings(encryptedSettings);
         Object.keys(decryptedSettings).forEach(key => {
@@ -789,7 +802,7 @@ app.post('/api/settings', mutationLimiter, (req, res) => {
                 process.env[key] = decryptedSettings[key];
             }
         });
-        
+
         // Update UniFi controller configuration
         unifiController.updateConfiguration();
 
@@ -802,13 +815,14 @@ app.post('/api/settings', mutationLimiter, (req, res) => {
 
         // Hot-reload notification config
         notificationManager.updateConfig();
-        
+
         logger.info('Settings updated successfully and .env file created/updated');
-        
-        res.json({ 
-            success: true, 
+
+        res.json({
+            success: true,
             message: '.env file created/updated successfully. Configuration is now active.',
-            envFileCreated: !fs.existsSync(envPath)
+            envFileCreated: !envExisted,
+            ignoredKeys
         });
     } catch (error) {
         logger.error('Error saving settings:', error.message);
