@@ -2,7 +2,12 @@
 
 // The only keys POST /api/settings is allowed to write into .env.
 // This is exactly the set the settings UI owns (GET /api/settings + the modal).
-// Deliberately excluded: UI_AUTH_ENABLED, SESSION_SECRET, CONFIG_DIR, DB_PATH, and anything else.
+// Deliberately excluded: SESSION_SECRET, CONFIG_DIR, DB_PATH, and anything else.
+// UI_AUTH_ENABLED is included on purpose: the settings modal is the only UI path to
+// turn authentication on, so refusing it would leave that checkbox inert. The residual
+// exposure (an unauthenticated caller flipping it while auth is off) is the bootstrap
+// problem tracked in card #45 (CORS); once auth is on, the auth middleware already
+// gates this endpoint.
 const WRITABLE_SETTINGS = Object.freeze([
     'UNIFI_HOST',
     'UNIFI_PORT',
@@ -27,7 +32,8 @@ const WRITABLE_SETTINGS = Object.freeze([
     'NTFY_PASSWORD',
     'NTFY_PRIORITY',
     'UI_USERNAME',
-    'UI_PASSWORD'
+    'UI_PASSWORD',
+    'UI_AUTH_ENABLED'
 ]);
 
 const WRITABLE_SET = new Set(WRITABLE_SETTINGS);

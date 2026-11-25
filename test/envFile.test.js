@@ -41,11 +41,18 @@ test('injected newline does not create a UNIFI_HOST entry (AC6)', () => {
 test('non-allowlisted keys are ignored and absent from values', () => {
     const { values, ignoredKeys } = validateSettingsPayload({
         SESSION_SECRET: 'nope',
-        UI_AUTH_ENABLED: 'true',
+        CONFIG_DIR: '/tmp/config',
         DB_PATH: '/tmp/x'
     });
-    assert.deepEqual(ignoredKeys.sort(), ['DB_PATH', 'SESSION_SECRET', 'UI_AUTH_ENABLED'].sort());
+    assert.deepEqual(ignoredKeys.sort(), ['CONFIG_DIR', 'DB_PATH', 'SESSION_SECRET'].sort());
     assert.deepEqual(Object.keys(values), []);
+});
+
+test('UI_AUTH_ENABLED is writable so the settings modal can enable auth', () => {
+    const { values, ignoredKeys, invalid } = validateSettingsPayload({ UI_AUTH_ENABLED: 'true' });
+    assert.deepEqual(ignoredKeys, []);
+    assert.deepEqual(invalid, []);
+    assert.deepEqual(values, { UI_AUTH_ENABLED: 'true' });
 });
 
 test('allowlisted key updates an existing line in place without duplicating', () => {
@@ -99,11 +106,11 @@ test('non-object body is invalid', () => {
     assert.equal(invalid[0].key, null);
 });
 
-test('WRITABLE_SETTINGS is frozen and excludes the blocked keys', () => {
+test('WRITABLE_SETTINGS is frozen and excludes the non-settable keys', () => {
     assert.ok(Object.isFrozen(WRITABLE_SETTINGS));
-    assert.ok(!WRITABLE_SETTINGS.includes('UI_AUTH_ENABLED'));
     assert.ok(!WRITABLE_SETTINGS.includes('SESSION_SECRET'));
     assert.ok(!WRITABLE_SETTINGS.includes('DB_PATH'));
     assert.ok(WRITABLE_SETTINGS.includes('UI_USERNAME'));
     assert.ok(WRITABLE_SETTINGS.includes('UI_PASSWORD'));
+    assert.ok(WRITABLE_SETTINGS.includes('UI_AUTH_ENABLED'));
 });
