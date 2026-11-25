@@ -10,9 +10,11 @@ class NotificationManager {
 
     _loadConfig() {
         this.enabled = process.env.NOTIFICATIONS_ENABLED === 'true';
+        this.notifyNewDevice_enabled = process.env.NOTIFY_NEW_DEVICE !== 'false';
+        this.notifyWatchedDevice_enabled = process.env.NOTIFY_WATCHED_DEVICE !== 'false';
 
         this.providers.pushover = {
-            enabled: !!(process.env.PUSHOVER_TOKEN && process.env.PUSHOVER_USER),
+            enabled: process.env.PUSHOVER_ENABLED !== 'false' && !!(process.env.PUSHOVER_TOKEN && process.env.PUSHOVER_USER),
             token: process.env.PUSHOVER_TOKEN || '',
             user: process.env.PUSHOVER_USER || '',
             priority: parseInt(process.env.PUSHOVER_PRIORITY || '0', 10),
@@ -20,10 +22,12 @@ class NotificationManager {
         };
 
         this.providers.ntfy = {
-            enabled: !!(process.env.NTFY_TOPIC),
+            enabled: process.env.NTFY_ENABLED !== 'false' && !!(process.env.NTFY_TOPIC),
             url: (process.env.NTFY_URL || 'https://ntfy.sh').replace(/\/$/, ''),
             topic: process.env.NTFY_TOPIC || '',
             token: process.env.NTFY_TOKEN || '',
+            username: process.env.NTFY_USERNAME || '',
+            password: process.env.NTFY_PASSWORD || '',
             priority: process.env.NTFY_PRIORITY || 'default'
         };
     }
@@ -102,7 +106,13 @@ class NotificationManager {
 
         if (opts.tags) headers['Tags'] = opts.tags;
         if (opts.url) headers['Click'] = opts.url;
-        if (cfg.token) headers['Authorization'] = `Bearer ${cfg.token}`;
+        if (cfg.username && cfg.password) {
+            // Basic Auth (username + password)
+            headers['Authorization'] = 'Basic ' + Buffer.from(`${cfg.username}:${cfg.password}`).toString('base64');
+        } else if (cfg.token) {
+            // Bearer token
+            headers['Authorization'] = `Bearer ${cfg.token}`;
+        }
 
         await axios.post(targetUrl, message, {
             headers,
@@ -143,6 +153,7 @@ class NotificationManager {
      * Convenience: new device detected.
      */
     async notifyNewDevice(device) {
+        if (!this.notifyNewDevice_enabled) return;
         const name = device.hostname || device.name || device.ip || device.mac;
         const vendor = device.vendor ? ` (${device.vendor})` : '';
         const conn = device.is_wired ? 'wired' : 'wireless';
@@ -155,10 +166,21 @@ class NotificationManager {
      * Convenience: watched device reconnected.
      */
     async notifyWatchedDevice(device) {
+        if (!this.notifyWatchedDevice_enabled) return;
         const name = device.hostname || device.name || device.ip || device.mac;
         const title = 'Watched Device Reconnected';
         const message = `${name} has joined the network.\nMAC: ${device.mac}\nIP: ${device.ip || 'unknown'}`;
         await this.send(title, message, { tags: 'eyes,computer' });
+    }
+
+    /**
+     * Convenience: watched device went offline.
+     */
+    async notifyDeviceOffline(device) {
+        const name = device.hostname || device.name || device.ip || device.mac;
+        const title = 'Device Offline';
+        const message = `${name} has left the network.\nMAC: ${device.mac}\nIP: ${device.ip || 'unknown'}`;
+        await this.send(title, message, { tags: 'warning,computer' });
     }
 
     /**

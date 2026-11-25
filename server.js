@@ -159,39 +159,17 @@ function startScanInterval(intervalMs) {
         try {
             if (!unifiController.isConfigured()) return;
 
-            // Snapshot which watch_offline devices were online BEFORE this scan
-            const prevOnline = new Set(
-                (await dbManager.getAllDevices())
-                    .filter(d => d.is_online && d.watch_offline)
-                    .map(d => d.mac)
-            );
-
-            const newDevices = await unifiController.scanForNewDevices();
-            if (newDevices.length > 0) {
-                await dbManager.addNewDevices(newDevices);
-                logger.info(`Periodic scan found ${newDevices.length} new device(s)`);
-                // Send push notifications for new devices
-                for (const device of newDevices) {
-                    notificationManager.notifyNewDevice(device).catch(() => {});
-                }
-            }
-            // Re-check watch alerts and send push notifications for watched reconnections
-            const newWatched = await dbManager.getUnacknowledgedDevices();
-            for (const d of newWatched) {
-                if (d.watch_connection) {
-                    notificationManager.notifyWatchedDevice(d).catch(() => {});
-                }
-            }
-            // Offline alerts: notify if a previously-online watch_offline device is now offline
-            const nowOnlineMacs = new Set(newDevices.filter(d => d.is_online).map(d => d.mac));
-            for (const mac of prevOnline) {
-                if (!nowOnlineMacs.has(mac)) {
-                    const device = (await dbManager.getAllDevices()).find(d => d.mac === mac);
-                    if (device) {
-                        notificationManager.notifyDeviceOffline
-                            ? notificationManager.notifyDeviceOffline(device).catch(() => {})
-                            : logger.info(`watch_offline: device went offline: ${mac}`);
+            const allScannedDevices = await unifiController.scanForNewDevices();
+            if (allScannedDevices.length > 0) {
+                const { newDevices, watchAlertDevices } = await dbManager.addNewDevices(allScannedDevices);
+                if (newDevices.length > 0) {
+                    logger.info(`Periodic scan found ${newDevices.length} genuinely new device(s)`);
+                    for (const device of newDevices) {
+                        notificationManager.notifyNewDevice(device).catch(() => {});
                     }
+                }
+                for (const d of watchAlertDevices) {
+                    notificationManager.notifyWatchedDevice(d).catch(() => {});
                 }
             }
 
@@ -717,13 +695,19 @@ app.get('/api/settings', (req, res) => {
             SCAN_INTERVAL: process.env.SCAN_INTERVAL || '30',
             // Notifications
             NOTIFICATIONS_ENABLED: process.env.NOTIFICATIONS_ENABLED || 'false',
+            NOTIFY_NEW_DEVICE: process.env.NOTIFY_NEW_DEVICE !== 'false' ? 'true' : 'false',
+            NOTIFY_WATCHED_DEVICE: process.env.NOTIFY_WATCHED_DEVICE !== 'false' ? 'true' : 'false',
+            PUSHOVER_ENABLED: process.env.PUSHOVER_ENABLED !== 'false' ? 'true' : 'false',
             PUSHOVER_TOKEN: process.env.PUSHOVER_TOKEN ? '[SET]' : '',
             PUSHOVER_USER: process.env.PUSHOVER_USER ? '[SET]' : '',
             PUSHOVER_PRIORITY: process.env.PUSHOVER_PRIORITY || '0',
             PUSHOVER_SOUND: process.env.PUSHOVER_SOUND || 'default',
+            NTFY_ENABLED: process.env.NTFY_ENABLED !== 'false' ? 'true' : 'false',
             NTFY_URL: process.env.NTFY_URL || 'https://ntfy.sh',
             NTFY_TOPIC: process.env.NTFY_TOPIC || '',
             NTFY_TOKEN: process.env.NTFY_TOKEN ? '[SET]' : '',
+            NTFY_USERNAME: process.env.NTFY_USERNAME || '',
+            NTFY_PASSWORD: process.env.NTFY_PASSWORD ? '[SET]' : '',
             NTFY_PRIORITY: process.env.NTFY_PRIORITY || 'default',
             // Auth
             UI_AUTH_ENABLED: process.env.UI_AUTH_ENABLED || 'false',
