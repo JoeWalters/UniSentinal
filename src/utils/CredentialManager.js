@@ -171,8 +171,7 @@ class CredentialManager {
             const reason = this.keyWasGenerated
                 ? 'stored value cannot be decrypted because the master key was missing or regenerated on this start'
                 : 'stored value failed its authentication check (edited, corrupted, or encrypted with a different key)';
-            console.error(`[SECURITY] Decryption error: ${error.message}`);
-            console.warn(`[SECURITY] ${reason} — re-enter the credential`);
+            console.warn(`[SECURITY] ${reason} (crypto said: ${error.message}) — re-enter the credential`);
             return { value: null, error: reason };
         }
     }
@@ -191,11 +190,10 @@ class CredentialManager {
             console.warn('[SECURITY] Read a value encrypted with the old CBC format; save settings to re-encrypt it with AES-256-GCM');
             return { value: plaintext, error: null };
         } catch (error) {
-            console.error('[SECURITY] Decryption error:', error.message);
             const reason = this.keyWasGenerated
                 ? 'stored value cannot be decrypted because the master key was missing or regenerated on this start'
                 : 'stored value will not decrypt with the current key';
-            console.warn(`[SECURITY] ${reason} — re-enter the credential`);
+            console.warn(`[SECURITY] ${reason} (crypto said: ${error.message}) — re-enter the credential`);
             return { value: null, error: reason };
         }
     }
@@ -231,7 +229,11 @@ class CredentialManager {
         
         SENSITIVE_FIELDS.forEach(field => {
             if (decrypted[field] && this.isEncrypted(decrypted[field])) {
-                decrypted[field] = this.decrypt(decrypted[field]);
+                const { value, error } = this.decryptDetailed(decrypted[field]);
+                if (error) {
+                    console.warn(`[SECURITY] Could not decrypt ${field}: ${error}`);
+                }
+                decrypted[field] = value;
             }
         });
         
