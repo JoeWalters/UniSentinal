@@ -288,10 +288,13 @@ class ParentalControlsManager {
                 if (this.unifiController.isConfigured()) {
                     console.log('ParentalControlsManager: UniFi controller is configured, fetching current devices and block status...');
                     
-                    // Get both current devices and blocked devices from UniFi
+                    // Get both current devices and blocked devices from UniFi.
+                    // The blocked list is fetched in strict mode: it must not be
+                    // mistaken for "nothing is blocked" just because the call
+                    // failed, or the reconcile below would clear real manual blocks.
                     const [currentDevicesData, blockedDevicesData] = await Promise.all([
                         this.unifiController.getAllKnownDevices(),
-                        this.unifiController.getBlockedDevices()
+                        this.unifiController.getBlockedDevices({ strict: true })
                     ]);
                     
                     // Convert devices array to Set of MAC addresses for fast lookup

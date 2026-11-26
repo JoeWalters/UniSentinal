@@ -220,3 +220,46 @@ test('AC3: an active bonus timer owns the device -> zero calls', async () => {
     assert.deepEqual(controller.calls.unblock, []);
     assert.deepEqual(db.calls.updateBlockStatus, []); // AC7
 });
+
+// ── Status reconcile (AC5 / AC7): never clear manual blocks on unknown state ──
+
+function makeStatusController(devices, opts = {}) {
+    return {
+        isConfigured: () => true,
+        getAllKnownDevices: async () => devices,
+        getBlockedDevices: async (options) => {
+            // Mirrors UnifiController: non-strict swallows the error into [].
+            if (opts.failBlockedFetch) {
+                if (options && options.strict) throw new Error('controller down');
+                return [];
+            }
+            return (opts.blocked || []).map((mac) => ({ mac }));
+        },
+    };
+}
+
+test('reconcile does not clear a manual block when the blocked-users fetch failed', async () => {
+    const mac = 'AA:BB:CC:DD:EE:FF';
+    const controller = makeStatusController([{ mac }], { failBlockedFetch: true });
+    const db = makeDb([scheduledDevice(mac, { is_blocked: 1 })]);
+    const mgr = makeManager(controller, db, []);
+
+    const result = await mgr.getManagedDevicesStatus();
+
+    // Unknown controller state: no status write, and the reported device is unchanged.
+    assert.deepEqual(db.calls.updateBlockStatus, []);
+    assert.equal(result.length, 1);
+});
+
+test('reconcile clears a manual block the controller no longer reports', async () => {
+    const mac = 'AA:BB:CC:DD:EE:FF';
+    const controller = makeStatusController([{ mac }], { blocked: [] });
+    const db = makeDb([scheduledDevice(mac, { is_blocked: 1 })]);
+    const mgr = makeManager(controller, db, []);
+
+    await mgr.getManagedDevicesStatus();
+
+    assert.equal(db.calls.updateBlockStatus.length, 1);
+    assert.deepEqual(db.calls.updateBlockStatus[0].slice(0, 3), [mac.toLowerCase(), false, 'sync_with_unifi']);
+    assert.deepEqual(db.calls.updateBlockStatus[0][4], { log: false }); // AC7: no activity log
+});
