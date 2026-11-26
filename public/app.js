@@ -200,12 +200,19 @@ class UniFiSentinel {
             });
         }
 
-        // Escape key to close modals
+        // Dialogs: Escape closes only the topmost one, and Tab stays inside it.
         document.addEventListener('keydown', (e) => {
+            const open = this.getOpenDialogs();
+            if (open.length === 0) return;
+
             if (e.key === 'Escape') {
-                this.closeModal();
-                this.closeAddDeviceModal();
-                this.closeDeviceManagementModal();
+                e.preventDefault();
+                this.closeDialog(open[open.length - 1]);
+                return;
+            }
+
+            if (e.key === 'Tab') {
+                this.trapFocusInDialog(open[open.length - 1], e);
             }
         });
     }
@@ -858,7 +865,7 @@ class UniFiSentinel {
         // Show/hide acknowledge button depending on whether device is already known
         const ackBtn = document.getElementById('modalAcknowledgeBtn');
         if (ackBtn) ackBtn.style.display = device.acknowledged ? 'none' : '';
-        modal.style.display = 'block';
+        this.openDialog('deviceModal');
     }
 
     switchDeviceModalTab(tab) {
@@ -1094,8 +1101,77 @@ class UniFiSentinel {
         `;
     }
 
+    // ── Dialog behaviour ─────────────────────────────────────────────────────
+    // The four overlays are plain divs toggled with style.display. These helpers
+    // make them behave like dialogs: focus moves in on open and is restored on
+    // close, Tab cycles inside the topmost one, and Escape closes only that one.
+    getOpenDialogs() {
+        return ['deviceModal', 'settingsModal', 'addDeviceModal', 'deviceManagementModal']
+            .map((id) => document.getElementById(id))
+            .filter((el) => el && el.style.display && el.style.display !== 'none');
+    }
+
+    openDialog(id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (!el.dataset.dialogOpen) {
+            this._dialogReturnFocus = document.activeElement;
+            el.dataset.dialogOpen = '1';
+        }
+        el.style.display = 'block';
+        el.removeAttribute('aria-hidden');
+        const focusable = this.getFocusableIn(el);
+        const target = focusable[0] || el;
+        if (target === el && !el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+        target.focus();
+    }
+
+    closeDialog(elOrId) {
+        const el = typeof elOrId === 'string' ? document.getElementById(elOrId) : elOrId;
+        if (!el) return;
+        el.style.display = 'none';
+        el.setAttribute('aria-hidden', 'true');
+        delete el.dataset.dialogOpen;
+
+        const restoresTo = this._dialogReturnFocus;
+        this._dialogReturnFocus = null;
+        if (restoresTo && document.contains(restoresTo) && typeof restoresTo.focus === 'function') {
+            restoresTo.focus();
+        }
+    }
+
+    getFocusableIn(container) {
+        const selector = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+        return Array.from(container.querySelectorAll(selector))
+            .filter((el) => el.offsetParent !== null || el === document.activeElement);
+    }
+
+    trapFocusInDialog(dialog, event) {
+        const focusable = this.getFocusableIn(dialog);
+        if (focusable.length === 0) {
+            event.preventDefault();
+            return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement;
+
+        if (!dialog.contains(active)) {
+            event.preventDefault();
+            first.focus();
+            return;
+        }
+        if (event.shiftKey && active === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && active === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    }
+
     closeModal() {
-        document.getElementById('deviceModal').style.display = 'none';
+        this.closeDialog('deviceModal');
         this.selectedDevice = null;
         this.currentModalTab = 'info';
     }
@@ -1593,7 +1669,6 @@ class UniFiSentinel {
 
     // Settings Modal
     async showSettingsModal() {
-        const modal = document.getElementById('settingsModal');
         
         // Load current settings
         try {
@@ -1613,7 +1688,7 @@ class UniFiSentinel {
         // Load version info
         await this.loadVersion();
         
-        modal.style.display = 'block';
+        this.openDialog('settingsModal');
     }
 
     async updateConfigurationStatus(settings, testSuccessful = false) {
@@ -1659,7 +1734,7 @@ class UniFiSentinel {
     }
 
     closeSettingsModal() {
-        document.getElementById('settingsModal').style.display = 'none';
+        this.closeDialog('settingsModal');
     }
 
     populateSettingsForm(settings) {
@@ -2178,7 +2253,7 @@ class UniFiSentinel {
             
             const devices = await response.json();
             this.renderAvailableDevices(devices);
-            document.getElementById('addDeviceModal').style.display = 'flex';
+            this.openDialog('addDeviceModal');
         } catch (error) {
             console.error('Error loading available devices:', error);
             
@@ -2199,7 +2274,7 @@ class UniFiSentinel {
     // Render available devices in the add device modal
     renderAvailableDevices(devices) {
         const devicesList = document.getElementById('availableDevicesList');
-        const searchInput = document.getElementById('deviceSearchInput');
+        const searchInput = document.getElementById('newDeviceSearchInput');
         
         // Debug: Log device data
         const wiredCount = devices.filter(d => d.is_wired).length;
@@ -2247,7 +2322,7 @@ class UniFiSentinel {
 
     // Setup event listeners for device filters
     setupDeviceFilterEventListeners() {
-        const searchInput = document.getElementById('deviceSearchInput');
+        const searchInput = document.getElementById('newDeviceSearchInput');
         const statusFilter = document.getElementById('statusFilter');
         const connectionFilter = document.getElementById('connectionFilter');
         const vendorFilter = document.getElementById('vendorFilter');
@@ -2275,7 +2350,7 @@ class UniFiSentinel {
     applyFilters() {
         if (!this.allAvailableDevices) return;
 
-        const searchTerm = document.getElementById('deviceSearchInput').value.toLowerCase();
+        const searchTerm = document.getElementById('newDeviceSearchInput').value.toLowerCase();
         const statusFilter = document.getElementById('statusFilter').value;
         const connectionFilter = document.getElementById('connectionFilter').value;
         const vendorFilter = document.getElementById('vendorFilter').value;
@@ -2496,10 +2571,10 @@ class UniFiSentinel {
 
     // Close add device modal
     closeAddDeviceModal() {
-        document.getElementById('addDeviceModal').style.display = 'none';
+        this.closeDialog('addDeviceModal');
         
         // Clear search and filters
-        document.getElementById('deviceSearchInput').value = '';
+        document.getElementById('newDeviceSearchInput').value = '';
         document.getElementById('statusFilter').value = 'all';
         document.getElementById('connectionFilter').value = 'all';
         document.getElementById('vendorFilter').value = 'all';
@@ -2516,7 +2591,7 @@ class UniFiSentinel {
 
     // Close device management modal
     closeDeviceManagementModal() {
-        document.getElementById('deviceManagementModal').style.display = 'none';
+        this.closeDialog('deviceManagementModal');
         this.currentManagedDevice = null;
     }
 
@@ -2534,7 +2609,7 @@ class UniFiSentinel {
             
             this.currentManagedDevice = device;
             this.populateDeviceManagementModal(device);
-            document.getElementById('deviceManagementModal').style.display = 'flex';
+            this.openDialog('deviceManagementModal');
         } catch (error) {
             console.error('Error loading device for management:', error);
             this.showError('Failed to load device details');

@@ -21,10 +21,10 @@
                     <span class="status-text">Checking...</span>
                 </div>
                 <div class="header-controls">
-                    <button id="darkModeToggle" class="btn-icon" title="Toggle Dark Mode">
+                    <button id="darkModeToggle" aria-label="Toggle dark mode" class="btn-icon" title="Toggle Dark Mode">
                         <i class="fas fa-moon"></i>
                     </button>
-                    <button id="settingsBtn" class="btn-icon" title="Settings">
+                    <button id="settingsBtn" class="btn-icon" title="Settings" aria-label="Open settings">
                         <i class="fas fa-cog"></i>
                     </button>
                     <button id="logoutBtn" class="btn-icon" title="Sign Out" style="display:none;">
@@ -359,11 +359,11 @@
     </div>
 
     <!-- Device Detail Modal -->
-    <div class="modal" id="deviceModal">
+    <div class="modal" id="deviceModal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="deviceModalTitle">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>Device Details</h3>
-                <button class="close-btn" id="closeModal">
+                <h3 id="deviceModalTitle">Device Details</h3>
+                <button class="close-btn" id="closeModal" aria-label="Close device details">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
@@ -424,13 +424,13 @@
     </div>
 
     <!-- Settings Modal -->
-    <div class="modal" id="settingsModal">
+    <div class="modal" id="settingsModal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="settingsModalTitle">
         <div class="modal-content settings-modal-content">
             <div class="modal-header settings-modal-header">
                 <div class="settings-header-brand">
                     <img src="favicon.svg" alt="" class="settings-brand-icon">
                     <div>
-                        <h3>Settings</h3>
+                        <h3 id="settingsModalTitle">Settings</h3>
                         <span class="settings-header-sub">UniSentinal Configuration</span>
                     </div>
                 </div>
@@ -438,7 +438,7 @@
                     <span class="config-indicator" id="configIndicator"></span>
                     <span class="config-text" id="configText">Checking...</span>
                 </div>
-                <button class="close-btn" id="closeSettingsModal">
+                <button class="close-btn" id="closeSettingsModal" aria-label="Close settings">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
@@ -719,29 +719,33 @@
     </div>
 
     <!-- Add Device to Parental Controls Modal -->
-    <div class="modal" id="addDeviceModal">
+    <div class="modal" id="addDeviceModal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="addDeviceModalTitle">
         <div class="modal-content">
             <div class="modal-header">
-                <h3><i class="fas fa-plus"></i> Add Device to Parental Controls</h3>
-                <button class="close-btn" id="closeAddDeviceModal">
+                <h3 id="addDeviceModalTitle"><i class="fas fa-plus"></i> Add Device to Parental Controls</h3>
+                <button class="close-btn" id="closeAddDeviceModal" aria-label="Close add device">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
             <div class="modal-body">
                 <div class="device-selection">
                     <div class="device-filters">
-                        <input type="text" id="deviceSearchInput" placeholder="Search by name, hostname, alias, MAC, IP, or vendor..." class="search-input">
+                        <label class="sr-only" for="newDeviceSearchInput">Search devices to add</label>
+                        <input type="text" id="newDeviceSearchInput" placeholder="Search by name, hostname, alias, MAC, IP, or vendor..." class="search-input">
                         <div class="filter-controls">
+                            <label class="sr-only" for="statusFilter">Filter by status</label>
                             <select id="statusFilter" class="filter-select">
                                 <option value="all">All Status</option>
                                 <option value="online">Online Only</option>
                                 <option value="offline">Offline Only</option>
                             </select>
+                            <label class="sr-only" for="connectionFilter">Filter by connection type</label>
                             <select id="connectionFilter" class="filter-select">
                                 <option value="all">All Connections</option>
                                 <option value="wifi">WiFi Only</option>
                                 <option value="wired">Wired Only</option>
                             </select>
+                            <label class="sr-only" for="vendorFilter">Filter by vendor</label>
                             <select id="vendorFilter" class="filter-select">
                                 <option value="all">All Vendors</option>
                                 <!-- Vendor options will be populated dynamically -->
@@ -766,11 +770,11 @@
     </div>
 
     <!-- Device Management Modal -->
-    <div class="modal" id="deviceManagementModal">
+    <div class="modal" id="deviceManagementModal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="managementModalTitle">
         <div class="modal-content">
             <div class="modal-header">
                 <h3 id="managementModalTitle"><i class="fas fa-cog"></i> Device Management</h3>
-                <button class="close-btn" id="closeManagementModal">
+                <button class="close-btn" id="closeManagementModal" aria-label="Close device management">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
