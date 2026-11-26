@@ -24,11 +24,19 @@ class UniFiSentinel {
         this.setupScheduleEventListeners(); // Setup schedule management event listeners
         this.initializeDarkMode(); // Initialize dark mode before loading content
         this.setupButtonAnimations(); // Setup button click animations
+        this.setupInlineSwitchStopPropagation(); // Stop switch clicks reaching the summary
         this.loadDevices();
         this.checkStatus();
         this.loadVersion();
         this.startAutoRefresh();
         this.checkAuthStatus();
+    }
+
+    setupInlineSwitchStopPropagation() {
+        // Restore the removed inline handler without an inline event attribute
+        document.querySelectorAll('.switch-inline').forEach((label) => {
+            label.addEventListener('click', (event) => event.stopPropagation());
+        });
     }
 
     bindEvents() {
@@ -1174,24 +1182,24 @@ class UniFiSentinel {
                 <div class="version-grid">
                     <div class="version-item">
                         <strong>Application Version:</strong>
-                        <span>${versionInfo.packageVersion || 'Unknown'}</span>
+                        <span>${this.escapeHtml(versionInfo.packageVersion || 'Unknown')}</span>
                     </div>
                     ${versionInfo.version && versionInfo.version !== versionInfo.packageVersion ? `
                         <div class="version-item">
                             <strong>Build Version:</strong>
-                            <span>${versionInfo.version}</span>
+                            <span>${this.escapeHtml(versionInfo.version)}</span>
                         </div>
                     ` : ''}
                     ${versionInfo.timestampVersion ? `
                         <div class="version-item">
                             <strong>Build ID:</strong>
-                            <span>${versionInfo.timestampVersion}</span>
+                            <span>${this.escapeHtml(versionInfo.timestampVersion)}</span>
                         </div>
                     ` : ''}
                     ${versionInfo.commitHash ? `
                         <div class="version-item">
                             <strong>Commit:</strong>
-                            <span>${versionInfo.commitHash}</span>
+                            <span>${this.escapeHtml(versionInfo.commitHash)}</span>
                         </div>
                     ` : ''}
                     ${versionInfo.buildDate ? `
@@ -1203,7 +1211,7 @@ class UniFiSentinel {
                     ${versionInfo.dockerVersion ? `
                         <div class="version-item">
                             <strong>Docker Version:</strong>
-                            <span>${versionInfo.dockerVersion}</span>
+                            <span>${this.escapeHtml(versionInfo.dockerVersion)}</span>
                         </div>
                     ` : ''}
                 </div>
@@ -1918,8 +1926,8 @@ class UniFiSentinel {
         const logEntries = logs.map(log => `
             <div class="log-entry">
                 <span class="log-timestamp">${new Date(log.timestamp).toLocaleString()}</span>
-                <span class="log-level ${log.level}">${log.level.toUpperCase()}</span>
-                <span class="log-message">${log.message}</span>
+                <span class="log-level ${this.escapeHtml(log.level)}">${this.escapeHtml(log.level).toUpperCase()}</span>
+                <span class="log-message">${this.escapeHtml(log.message)}</span>
             </div>
         `).join('');
 
@@ -2600,8 +2608,9 @@ class UniFiSentinel {
     // Populate device management modal with device data
     populateDeviceManagementModal(device) {
         // Update modal title
-        document.getElementById('managementModalTitle').innerHTML = 
-            `<i class="fas fa-cog"></i> Managing: ${device.device_name}`;
+        const title = document.getElementById('managementModalTitle');
+        title.innerHTML = '<i class="fas fa-cog"></i>';
+        title.append(document.createTextNode(` Managing: ${device.device_name ?? ''}`));
 
         // Switch to controls tab by default
         this.switchManagementTab('controls');
@@ -2815,9 +2824,9 @@ class UniFiSentinel {
                     <div class="time-periods" id="${day}-periods">
                         ${daySchedule.blockedPeriods.map((period, periodIndex) => `
                             <div class="time-period">
-                                <input type="time" value="${period.start}" data-day="${day}" data-period="${periodIndex}" data-type="start">
+                                <input type="time" value="${this.escapeHtml(period.start)}" data-day="${day}" data-period="${periodIndex}" data-type="start">
                                 <span>to</span>
-                                <input type="time" value="${period.end}" data-day="${day}" data-period="${periodIndex}" data-type="end">
+                                <input type="time" value="${this.escapeHtml(period.end)}" data-day="${day}" data-period="${periodIndex}" data-type="end">
                                 <button class="btn-small btn-danger remove-time-period-btn" data-day="${day}" data-period="${periodIndex}">
                                     <i class="fas fa-trash"></i>
                                 </button>
@@ -2942,8 +2951,8 @@ class UniFiSentinel {
             activityLogs.innerHTML = logs.map(log => `
                 <div class="activity-log-item">
                     <div class="log-details">
-                        <div class="log-action">${this.formatLogAction(log.action)}</div>
-                        <div class="log-reason">${log.reason || 'No reason specified'}</div>
+                        <div class="log-action">${this.escapeHtml(this.formatLogAction(log.action))}</div>
+                        <div class="log-reason">${this.escapeHtml(log.reason || 'No reason specified')}</div>
                     </div>
                     <div class="log-timestamp">${new Date(log.timestamp).toLocaleString()}</div>
                 </div>
