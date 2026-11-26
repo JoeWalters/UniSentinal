@@ -215,15 +215,18 @@ app.post('/api/auth/login', rateLimit({ windowMs: 60 * 1000, max: 10, message: {
         return res.status(500).json({ error: 'UI_PASSWORD not configured' });
     }
 
-    // Constant-time comparison to prevent timing attacks
-    const userMatch = crypto.timingSafeEqual(
-        Buffer.from(username || ''),
-        Buffer.from(configUser)
-    );
-    const passMatch = crypto.timingSafeEqual(
-        Buffer.from(password || ''),
-        Buffer.from(configPass)
-    );
+    // Constant-time comparison. crypto.timingSafeEqual() throws when the two
+    // buffers differ in length, which turned a wrong-length password into a 500
+    // — a reliable one-bit-per-request answer to "how long is the secret?". Both
+    // sides are hashed to a fixed width first, so the comparison is still
+    // constant-time and never throws, whatever the input.
+    const constantTimeEquals = (a, b) => {
+        const digest = (value) => crypto.createHash('sha256').update(String(value ?? ''), 'utf8').digest();
+        return crypto.timingSafeEqual(digest(a), digest(b));
+    };
+
+    const userMatch = constantTimeEquals(username, configUser);
+    const passMatch = constantTimeEquals(password, configPass);
 
     if (userMatch && passMatch) {
         req.session.authenticated = true;
