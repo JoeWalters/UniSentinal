@@ -470,12 +470,25 @@ class DatabaseManager {
     }
 
     // Parental Controls Methods
+    //
+    // Re-adding a MAC that is already in the table must not reset its state.
+    // INSERT OR REPLACE is DELETE-then-INSERT, so every column not listed here
+    // (is_blocked, blocked_until, schedule_data, is_scheduled, bonus_time, the
+    // daily counters, notes, created_at) went back to its DEFAULT — which is how
+    // "remove from parental controls, then add it again" silently wiped a
+    // device's schedule and block state.
     async addManagedDevice(deviceData) {
         try {
             const stmt = this.db.prepare(`
-                INSERT OR REPLACE INTO parental_controls 
+                INSERT INTO parental_controls
                 (mac, device_name, ip, vendor, is_managed, created_at, updated_at)
                 VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON CONFLICT(mac) DO UPDATE SET
+                    device_name = excluded.device_name,
+                    ip = COALESCE(excluded.ip, parental_controls.ip),
+                    vendor = COALESCE(excluded.vendor, parental_controls.vendor),
+                    is_managed = 1,
+                    updated_at = CURRENT_TIMESTAMP
             `);
             
             stmt.run(

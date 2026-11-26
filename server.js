@@ -355,10 +355,16 @@ app.post('/api/devices/acknowledge-all', async (req, res) => {
 
 app.get('/api/scan', async (req, res) => {
     try {
-        const newDevices = await unifiController.scanForNewDevices();
-        if (newDevices.length > 0) {
-            await dbManager.addNewDevices(newDevices);
-            logger.info(`Manual scan found ${newDevices.length} new device(s)`);
+        // scanForNewDevices() returns every client the controller knows about;
+        // addNewDevices() is what knows which of them are actually new. Report
+        // that count, or a rescan of an unchanged network claims N new devices.
+        const allScannedDevices = await unifiController.scanForNewDevices();
+        let newDevices = [];
+        if (allScannedDevices.length > 0) {
+            ({ newDevices } = await dbManager.addNewDevices(allScannedDevices));
+            if (newDevices.length > 0) {
+                logger.info(`Manual scan found ${newDevices.length} genuinely new device(s)`);
+            }
         }
         res.json({ 
             success: true, 
