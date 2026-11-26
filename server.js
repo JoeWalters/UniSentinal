@@ -41,11 +41,13 @@ const plaintextFields = [];
 SENSITIVE_FIELDS.forEach(field => {
     if (process.env[field] && credentialManager.isEncrypted(process.env[field])) {
         console.log(`[SECURITY] Decrypting environment variable: ${field}`);
-        const decrypted = credentialManager.decrypt(process.env[field]);
+        // decryptDetailed() says *why* it failed, so a missing/regenerated key and
+        // a value that failed its authentication check are not reported alike.
+        const { value: decrypted, error: decryptError } = credentialManager.decryptDetailed(process.env[field]);
         if (decrypted !== null) {
             process.env[field] = decrypted;
         } else {
-            console.error(`[SECURITY] Failed to decrypt ${field} - credential may be corrupted`);
+            console.error(`[SECURITY] Cannot use ${field}: ${decryptError}. The value has been removed from this run — re-enter it in Settings.`);
             delete process.env[field];
         }
     } else if (process.env[field]) {

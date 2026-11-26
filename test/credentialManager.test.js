@@ -93,3 +93,123 @@ test('UI_PASSWORD is redacted from sanitized logging', () => {
     assert.equal(sanitized.UI_PASSWORD, '[REDACTED]');
     assert.ok(!JSON.stringify(sanitized).includes('ui-pass-123'));
 });
+
+// ── Card #46: authenticated encryption and key-file permissions ──────────────
+
+const crypto = require('crypto');
+
+function managerInTempDir(name) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), `us46-${name}-`));
+    process.env.CONFIG_DIR = dir;
+    const manager = new CredentialManager();
+    return { dir, manager };
+}
+
+test('a value round-trips through authenticated encryption and is marked v2', () => {
+    const { dir, manager } = managerInTempDir('roundtrip');
+    const stored = manager.encrypt('hunter2');
+
+    assert.match(stored, /^encrypted:v2:/, 'new values use the authenticated format');
+    assert.equal(manager.decrypt(stored), 'hunter2');
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('flipping one byte of a stored value fails the authentication check', () => {
+    const { dir, manager } = managerInTempDir('tamper');
+    // On a normal start the key file already exists; only a *fresh* key makes the
+    // reason "key was missing", which the next test covers.
+    manager.keyWasGenerated = false;
+    const stored = manager.encrypt('hunter2');
+
+    const prefix = 'encrypted:v2:';
+    const bytes = Buffer.from(stored.slice(prefix.length), 'base64');
+    bytes[bytes.length - 1] ^= 0x01; // flip one bit of the ciphertext
+    const tampered = prefix + bytes.toString('base64');
+
+    const result = manager.decryptDetailed(tampered);
+    assert.equal(result.value, null, 'a tampered value must not decrypt');
+    assert.match(result.error, /authentication check/, 'and the reason names tampering, not a generic failure');
+    assert.equal(manager.decrypt(tampered), null);
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('a value written with the old CBC format still decrypts', () => {
+    const { dir, manager } = managerInTempDir('legacy');
+
+    // Reproduce exactly what the pre-GCM code wrote: encrypted: + base64(iv||ct).
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv('aes-256-cbc', manager.masterKey, iv);
+    const ciphertext = Buffer.concat([cipher.update('old-secret', 'utf8'), cipher.final()]);
+    const legacy = 'encrypted:' + Buffer.concat([iv, ciphertext]).toString('base64');
+
+    assert.equal(manager.decrypt(legacy), 'old-secret', 'existing installs keep working');
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('a completely foreign key cannot decrypt, and the reason is stated', () => {
+    const { dir, manager } = managerInTempDir('foreignkey');
+    const stored = manager.encrypt('hunter2');
+
+    // A second manager in a different directory has a different master key.
+    const other = managerInTempDir('foreignkey-other');
+    other.manager.keyWasGenerated = false;
+    const result = other.manager.decryptDetailed(stored);
+    assert.equal(result.value, null, 'another key must not yield plaintext');
+    assert.match(result.error, /authentication check/);
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(other.dir, { recursive: true, force: true });
+});
+
+test('a missing/regenerated key and a tampered value are reported differently', () => {
+    const { dir, manager } = managerInTempDir('reasons');
+    const stored = manager.encrypt('hunter2');
+
+    // (a) the stored value was edited, key unchanged
+    const prefix = 'encrypted:v2:';
+    const bytes = Buffer.from(stored.slice(prefix.length), 'base64');
+    bytes[bytes.length - 1] ^= 0x01;
+    manager.keyWasGenerated = false;
+    const tampered = manager.decryptDetailed(prefix + bytes.toString('base64'));
+
+    // (b) the value is fine but this start had to generate a new key
+    const other = managerInTempDir('reasons-other');
+    other.manager.keyWasGenerated = true; // as when .key is missing at boot
+    const withFreshKey = other.manager.decryptDetailed(stored);
+
+    assert.equal(tampered.value, null);
+    assert.equal(withFreshKey.value, null);
+    assert.match(tampered.error, /authentication check/);
+    assert.match(withFreshKey.error, /master key was missing or regenerated/);
+    assert.notEqual(tampered.error, withFreshKey.error, 'the two causes must not read the same');
+
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(other.dir, { recursive: true, force: true });
+});
+
+test('a key file created here is 0600', () => {
+    const { dir, manager } = managerInTempDir('mode600');
+    const mode = fs.statSync(manager.keyFile).mode & 0o777;
+    assert.equal(mode.toString(8), '600');
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('an existing key file with wide permissions is reported at startup', () => {
+    const { dir, manager } = managerInTempDir('widemode');
+    fs.chmodSync(manager.keyFile, 0o644);
+
+    const warnings = [];
+    const originalWarn = console.warn;
+    console.warn = (...args) => warnings.push(args.join(' '));
+    try {
+        // A new manager in the same directory re-reads the existing key file.
+        new CredentialManager();
+    } finally {
+        console.warn = originalWarn;
+    }
+
+    const warning = warnings.find((line) => line.includes('permissions'));
+    assert.ok(warning, 'a wide-permission key file must be reported');
+    assert.match(warning, /0644|644/, 'the warning names the actual mode');
+    assert.ok(warning.includes(manager.keyFile), 'and the file it applies to');
+    fs.rmSync(dir, { recursive: true, force: true });
+});

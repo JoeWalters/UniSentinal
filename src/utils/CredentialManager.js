@@ -18,9 +18,15 @@ const SENSITIVE_FIELDS = Object.freeze([
 
 class CredentialManager {
     constructor() {
-        this.algorithm = 'aes-256-cbc';
+        // AES-256-GCM: confidentiality *and* integrity. CBC alone cannot tell
+        // "wrong key" from "somebody edited the stored value".
+        this.algorithm = 'aes-256-gcm';
+        this.legacyAlgorithm = 'aes-256-cbc';
         this.keyLength = 32; // 256 bits
-        this.ivLength = 16;  // 128 bits
+        this.ivLength = 16;  // legacy CBC IV
+        this.gcmIvLength = 12;
+        this.tagLength = 16;
+        this.keyWasGenerated = false;
         this.keyFile = path.join(process.env.CONFIG_DIR || './config', '.key');
         this.masterKey = this.getMasterKey();
     }
@@ -34,12 +40,15 @@ class CredentialManager {
             if (fs.existsSync(this.keyFile)) {
                 const keyData = fs.readFileSync(this.keyFile);
                 if (keyData.length === this.keyLength) {
+                    this.warnIfKeyPermissionsAreWide();
                     return keyData;
                 }
+                console.warn(`[SECURITY] Key file ${this.keyFile} has ${keyData.length} bytes, expected ${this.keyLength}; generating a new one`);
             }
             
             // Generate new key if doesn't exist or is invalid
             console.log('[SECURITY] Generating new master encryption key');
+            this.keyWasGenerated = true;
             const newKey = crypto.randomBytes(this.keyLength);
             
             // Ensure config directory exists
@@ -61,6 +70,24 @@ class CredentialManager {
     }
 
     /**
+     * Warn if an existing key file is readable by anyone but its owner.
+     * A key created here is 0600, but a copied or container-mounted file may not be.
+     */
+    warnIfKeyPermissionsAreWide() {
+        try {
+            const mode = fs.statSync(this.keyFile).mode & 0o777;
+            if (mode & 0o077) {
+                console.warn(
+                    `[SECURITY] Key file ${this.keyFile} has permissions ${mode.toString(8).padStart(4, '0')}; ` +
+                    'it should be 0600 (owner-only). Fix with: chmod 600 ' + this.keyFile
+                );
+            }
+        } catch (error) {
+            console.warn(`[SECURITY] Could not stat key file ${this.keyFile}: ${error.message}`);
+        }
+    }
+
+    /**
      * Encrypt sensitive data
      */
     encrypt(plaintext) {
@@ -69,16 +96,16 @@ class CredentialManager {
         }
 
         try {
-            const iv = crypto.randomBytes(this.ivLength);
+            const iv = crypto.randomBytes(this.gcmIvLength);
             const cipher = crypto.createCipheriv(this.algorithm, this.masterKey, iv);
-            
-            let ciphertext = cipher.update(plaintext, 'utf8', 'hex');
-            ciphertext += cipher.final('hex');
-            
-            // Combine iv + ciphertext and encode as base64
-            const combined = Buffer.concat([iv, Buffer.from(ciphertext, 'hex')]);
-            return 'encrypted:' + combined.toString('base64');
-            
+
+            const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+            const tag = cipher.getAuthTag();
+
+            // iv || auth tag || ciphertext, base64-encoded behind the v2 marker.
+            const combined = Buffer.concat([iv, tag, ciphertext]);
+            return 'encrypted:v2:' + combined.toString('base64');
+
         } catch (error) {
             console.error('[SECURITY] Encryption error:', error.message);
             throw new Error('Failed to encrypt credential');
@@ -98,25 +125,78 @@ class CredentialManager {
             return encryptedData; // Return as-is for unencrypted data
         }
 
+        return this.decryptDetailed(encryptedData).value;
+    }
+
+    /**
+     * Decrypt with a reason, so "the key is wrong/missing" and "the stored value
+     * was altered" are not reported as the same generic failure.
+     * Returns { value, error } where error is null on success.
+     */
+    decryptDetailed(encryptedData) {
+        if (!encryptedData || typeof encryptedData !== 'string') {
+            return { value: encryptedData, error: null };
+        }
+        if (!encryptedData.startsWith('encrypted:')) {
+            return { value: encryptedData, error: null };
+        }
+
+        if (encryptedData.startsWith('encrypted:v2:')) {
+            return this.decryptAuthenticated(encryptedData.substring('encrypted:v2:'.length));
+        }
+
+        // Values written before the GCM change: AES-256-CBC, no auth tag.
+        return this.decryptLegacy(encryptedData.substring('encrypted:'.length));
+    }
+
+    decryptAuthenticated(payloadBase64) {
         try {
-            // Remove prefix and decode base64
-            const combined = Buffer.from(encryptedData.substring(10), 'base64');
-            
-            // Extract components
+            const combined = Buffer.from(payloadBase64, 'base64');
+            if (combined.length <= this.gcmIvLength + this.tagLength) {
+                return { value: null, error: 'ciphertext is truncated' };
+            }
+
+            const iv = combined.subarray(0, this.gcmIvLength);
+            const tag = combined.subarray(this.gcmIvLength, this.gcmIvLength + this.tagLength);
+            const ciphertext = combined.subarray(this.gcmIvLength + this.tagLength);
+
+            const decipher = crypto.createDecipheriv(this.algorithm, this.masterKey, iv);
+            decipher.setAuthTag(tag);
+
+            const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+            return { value: plaintext, error: null };
+        } catch (error) {
+            // GCM cannot tell a wrong key from an edited value; both fail the tag
+            // check, and pretending otherwise would be worse than saying so.
+            const reason = this.keyWasGenerated
+                ? 'stored value cannot be decrypted because the master key was missing or regenerated on this start'
+                : 'stored value failed its authentication check (edited, corrupted, or encrypted with a different key)';
+            console.error(`[SECURITY] Decryption error: ${error.message}`);
+            console.warn(`[SECURITY] ${reason} — re-enter the credential`);
+            return { value: null, error: reason };
+        }
+    }
+
+    decryptLegacy(payloadBase64) {
+        try {
+            const combined = Buffer.from(payloadBase64, 'base64');
             const iv = combined.subarray(0, this.ivLength);
             const ciphertext = combined.subarray(this.ivLength);
-            
-            const decipher = crypto.createDecipheriv(this.algorithm, this.masterKey, iv);
-            
+
+            const decipher = crypto.createDecipheriv(this.legacyAlgorithm, this.masterKey, iv);
+
             let plaintext = decipher.update(ciphertext, null, 'utf8');
             plaintext += decipher.final('utf8');
-            
-            return plaintext;
-            
+
+            console.warn('[SECURITY] Read a value encrypted with the old CBC format; save settings to re-encrypt it with AES-256-GCM');
+            return { value: plaintext, error: null };
         } catch (error) {
             console.error('[SECURITY] Decryption error:', error.message);
-            console.warn('[SECURITY] Failed to decrypt credential - may be corrupted or using old key');
-            return null; // Return null rather than leaking ciphertext
+            const reason = this.keyWasGenerated
+                ? 'stored value cannot be decrypted because the master key was missing or regenerated on this start'
+                : 'stored value will not decrypt with the current key';
+            console.warn(`[SECURITY] ${reason} — re-enter the credential`);
+            return { value: null, error: reason };
         }
     }
 
