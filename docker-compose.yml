@@ -8,6 +8,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
+      - TZ=${TZ:-America/New_York}
       - UNIFI_HOST=192.168.0.1
     volumes:
       # Mount a volume for all persistent data (database, settings, logs)
