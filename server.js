@@ -1,5 +1,4 @@
 const express = require('express');
-const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const session = require('express-session');
@@ -24,6 +23,7 @@ const DatabaseManager = require('./src/database/DatabaseManager');
 const ParentalControlsManager = require('./src/controllers/ParentalControlsManager');
 const Logger = require('./src/utils/Logger');
 const CredentialManager = require('./src/utils/CredentialManager');
+const { rejectCrossSiteMutations } = require('./src/middleware/rejectCrossSiteMutations');
 const { validateSettingsPayload, applySettingsToEnv } = require('./src/utils/envFile');
 const NotificationManager = require('./src/utils/NotificationManager');
 
@@ -71,7 +71,10 @@ app.use(helmet({
         }
     }
 }));
-app.use(cors());
+// No CORS headers: the UI is same-origin, and a permissive CORS policy let any
+// page the operator visited drive this API. Mutating requests from a browser
+// that is not on this origin are refused outright.
+app.use(rejectCrossSiteMutations());
 app.use(express.json());
 
 // ── Session & optional Web UI Auth ───────────────────────────────────────────

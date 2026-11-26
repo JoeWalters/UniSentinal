@@ -22,7 +22,7 @@ A comprehensive web application for monitoring UniFi networks with advanced pare
 - **Encrypted Credential Storage**: AES-256-CBC encryption for all passwords and sensitive data
 - **Secure Key Management**: Automatic key generation with restricted file permissions
 - **No Plain Text Passwords**: Every credential the app accepts (UniFi, database, API, secret, Pushover, ntfy, UI) is encrypted at rest in configuration files. Values written before this fix stay plaintext until the operator re-enters them (a settings save encrypts the UI-managed ones; `DATABASE_PASSWORD`/`API_KEY`/`SECRET_KEY` are not settable from the UI) — the boot warning names those fields.
-- **API Security**: No credential exposure in API responses with secure session handling
+- **API Security**: No credential exposure in API responses; cross-site state changes are refused. Sessions are **opt-in** (`UI_AUTH_ENABLED=false` by default) — this app is meant for a trusted home LAN, not for exposure to the internet.
 - **Content Security Policy**: CSP-compliant code preventing security vulnerabilities
 
 ### 🎨 **Modern User Experience**
@@ -385,7 +385,8 @@ The Docker images include build metadata and version information accessible via:
 - 🔒 **No Credential Exposure**: Passwords never returned in API responses
 - 🛡️ **Input Validation**: All inputs validated and sanitized
 - 📝 **Audit Logging**: All API calls logged without sensitive data
-- 🔐 **Secure Sessions**: Proper session management for web interface
+- 🔐 **Sessions are opt-in**: session handling exists but is off unless `UI_AUTH_ENABLED=true`; run this app on a trusted LAN, not on the internet
+- 🚫 **No cross-site state changes**: mutating requests are refused when the browser reports `Sec-Fetch-Site: cross-site` or an `Origin` that is not this app's host (a plain `curl`/script with no `Origin` still works)
 
 ## 📁 Project Structure
 
