@@ -519,7 +519,7 @@ class DatabaseManager {
         }
     }
 
-    async updateDeviceBlockStatus(mac, isBlocked, reason = 'manual', duration = null) {
+    async updateDeviceBlockStatus(mac, isBlocked, reason = 'manual', duration = null, options = {}) {
         try {
             const stmt = this.db.prepare(`
                 UPDATE parental_controls 
@@ -538,8 +538,10 @@ class DatabaseManager {
             
             stmt.run(isBlocked ? 1 : 0, blockedUntil, mac);
             
-            // Log the action
-            this.logParentalAction(mac, isBlocked ? 'blocked' : 'unblocked', reason, duration);
+            // Log the action (skip when the caller only wants to reconcile state)
+            if (options.log !== false) {
+                this.logParentalAction(mac, isBlocked ? 'blocked' : 'unblocked', reason, duration);
+            }
             
             console.log(`Device ${mac} ${isBlocked ? 'blocked' : 'unblocked'}`);
         } catch (error) {
