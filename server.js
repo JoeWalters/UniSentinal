@@ -36,8 +36,9 @@ const credentialManager = new CredentialManager();
 const notificationManager = new NotificationManager();
 
 // Decrypt environment variables that were loaded from .env
-const sensitiveFields = ['UNIFI_PASSWORD'];
-sensitiveFields.forEach(field => {
+const { SENSITIVE_FIELDS } = require('./src/utils/CredentialManager');
+const plaintextFields = [];
+SENSITIVE_FIELDS.forEach(field => {
     if (process.env[field] && credentialManager.isEncrypted(process.env[field])) {
         console.log(`[SECURITY] Decrypting environment variable: ${field}`);
         const decrypted = credentialManager.decrypt(process.env[field]);
@@ -47,8 +48,14 @@ sensitiveFields.forEach(field => {
             console.error(`[SECURITY] Failed to decrypt ${field} - credential may be corrupted`);
             delete process.env[field];
         }
+    } else if (process.env[field]) {
+        // Present but not encrypted: a legacy cleartext value. Never log the value.
+        plaintextFields.push(field);
     }
 });
+if (plaintextFields.length > 0) {
+    logger.warn(`[SECURITY] Plaintext credential fields in .env (save settings to encrypt them): ${plaintextFields.join(', ')}`);
+}
 
 // Middleware - Helmet 6.x compatible CSP (allow HTTP for local development)
 app.use(helmet({

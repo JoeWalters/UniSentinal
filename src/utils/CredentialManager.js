@@ -2,6 +2,20 @@ const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 
+// Every credential the app accepts. One list feeds encryptSettings,
+// decryptSettings and sanitizeForLogging so no field is ever missed.
+const SENSITIVE_FIELDS = Object.freeze([
+    'UNIFI_PASSWORD',
+    'DATABASE_PASSWORD',
+    'API_KEY',
+    'SECRET_KEY',
+    'PUSHOVER_TOKEN',
+    'PUSHOVER_USER',
+    'NTFY_TOKEN',
+    'NTFY_PASSWORD',
+    'UI_PASSWORD',
+]);
+
 class CredentialManager {
     constructor() {
         this.algorithm = 'aes-256-cbc';
@@ -117,10 +131,9 @@ class CredentialManager {
      * Encrypt all sensitive fields in a settings object
      */
     encryptSettings(settings) {
-        const sensitiveFields = ['UNIFI_PASSWORD', 'DATABASE_PASSWORD', 'API_KEY', 'SECRET_KEY'];
         const encrypted = { ...settings };
         
-        sensitiveFields.forEach(field => {
+        SENSITIVE_FIELDS.forEach(field => {
             if (encrypted[field] && !this.isEncrypted(encrypted[field])) {
                 console.log(`[SECURITY] Encrypting field: ${field}`);
                 encrypted[field] = this.encrypt(encrypted[field]);
@@ -134,10 +147,9 @@ class CredentialManager {
      * Decrypt all sensitive fields in a settings object
      */
     decryptSettings(settings) {
-        const sensitiveFields = ['UNIFI_PASSWORD', 'DATABASE_PASSWORD', 'API_KEY', 'SECRET_KEY'];
         const decrypted = { ...settings };
         
-        sensitiveFields.forEach(field => {
+        SENSITIVE_FIELDS.forEach(field => {
             if (decrypted[field] && this.isEncrypted(decrypted[field])) {
                 decrypted[field] = this.decrypt(decrypted[field]);
             }
@@ -150,10 +162,9 @@ class CredentialManager {
      * Safely log settings without exposing sensitive data
      */
     sanitizeForLogging(settings) {
-        const sensitiveFields = ['UNIFI_PASSWORD', 'DATABASE_PASSWORD', 'API_KEY', 'SECRET_KEY'];
         const sanitized = { ...settings };
         
-        sensitiveFields.forEach(field => {
+        SENSITIVE_FIELDS.forEach(field => {
             if (sanitized[field]) {
                 if (this.isEncrypted(sanitized[field])) {
                     sanitized[field] = '[ENCRYPTED]';
@@ -168,3 +179,4 @@ class CredentialManager {
 }
 
 module.exports = CredentialManager;
+module.exports.SENSITIVE_FIELDS = SENSITIVE_FIELDS;
