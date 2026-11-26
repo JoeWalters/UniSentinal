@@ -1,5 +1,12 @@
 const axios = require('axios');
 const https = require('https');
+const {
+    DAY_NAMES,
+    parseTimeToMinutes,
+    isMinuteInWindow,
+    getZonedParts,
+    resolveDefaultTimeZone,
+} = require('../utils/scheduleWindow');
 
 class ParentalControlsManager {
     constructor(unifiController, databaseManager) {
@@ -8,6 +15,7 @@ class ParentalControlsManager {
         this.blockedDevices = new Set(); // Cache of currently blocked devices
         this.scheduleCheckInterval = null;
         this.bonusTimeTimers = new Map(); // Track active bonus time sessions: mac -> {timer, endTime, originallyBlocked}
+        this.timeZone = resolveDefaultTimeZone();
         
         // Start background processes
         this.startScheduleChecker();
@@ -102,6 +110,26 @@ class ParentalControlsManager {
         }
     }
 
+    // The only place schedule/bonus enforcement touches the device. It talks
+    // straight to the controller and never persists is_blocked (that stays user
+    // intent, written only by the block/unblock endpoints); the controller is
+    // the source of truth for block state. Errors propagate to the caller.
+    async applyControllerBlock(mac, shouldBlock, reason) {
+        const success = await this.retryUnifiOperation(
+            () => shouldBlock ? this.unifiController.blockDevice(mac) : this.unifiController.unblockDevice(mac),
+            shouldBlock ? `Block device ${mac}` : `Unblock device ${mac}`
+        );
+        if (!success) {
+            throw new Error(`Failed to ${shouldBlock ? 'block' : 'unblock'} device on UniFi controller`);
+        }
+        if (shouldBlock) {
+            this.blockedDevices.add(mac);
+        } else {
+            this.blockedDevices.delete(mac);
+        }
+        await this.db.logParentalAction(mac, shouldBlock ? 'blocked' : 'unblocked', reason);
+    }
+
     // Set time limits for device
     async setTimeLimit(mac, dailyTimeLimit, bonusTime = 0) {
         try {
@@ -156,7 +184,7 @@ class ParentalControlsManager {
                     // Re-block device if it should be blocked based on schedule/rules
                     const shouldBeBlocked = await this.shouldDeviceBeBlockedNow(mac);
                     if (shouldBeBlocked) {
-                        await this.blockDevice(mac);
+                        await this.applyControllerBlock(mac, true, 'temporary');
                         console.log(`🚫 Device ${mac} re-blocked after bonus time expired`);
                     } else {
                         console.log(`✅ Device ${mac} remains unblocked - not scheduled to be blocked`);
@@ -252,6 +280,9 @@ class ParentalControlsManager {
             // Try to get current device data and blocked devices from UniFi controller
             let currentDevices = new Set();
             let blockedDevices = new Set();
+            // Only non-zero when the controller actually answered: an unconfigured
+            // controller or a failed fetch means "unknown", not "nothing is blocked".
+            let hasControllerState = false;
             
             try {
                 if (this.unifiController.isConfigured()) {
@@ -273,6 +304,7 @@ class ParentalControlsManager {
                     
                     // Update our internal blocked devices cache
                     this.blockedDevices = new Set(blockedDevices);
+                    hasControllerState = true;
                 } else {
                     console.log('ParentalControlsManager: UniFi controller not configured, using stored data only');
                 }
@@ -281,6 +313,19 @@ class ParentalControlsManager {
                 // Continue without current device data
             }
             
+            // Downward-only reconcile: clear a manual flag the controller no
+            // longer honours, but never write is_blocked = 1 just because the
+            // controller shows a block (that would manufacture a manual block
+            // from a schedule block). No parental_logs row is written here.
+            if (hasControllerState) {
+                for (const device of managedDevices) {
+                    const deviceMac = device.mac.toLowerCase();
+                    if (!blockedDevices.has(deviceMac) && device.is_blocked) {
+                        await this.db.updateDeviceBlockStatus(deviceMac, false, 'sync_with_unifi', null, { log: false });
+                    }
+                }
+            }
+
             return managedDevices.map(device => {
                 const deviceMac = device.mac.toLowerCase();
                 
@@ -289,12 +334,6 @@ class ParentalControlsManager {
                 
                 // Check actual block status from UniFi controller
                 const isActuallyBlocked = blockedDevices.has(deviceMac);
-                
-                // Update database if there's a mismatch between UniFi and our database
-                if (isActuallyBlocked !== device.is_blocked) {
-                    console.log(`Status mismatch for ${device.device_name} (${deviceMac}): DB=${device.is_blocked}, UniFi=${isActuallyBlocked}. Updating database...`);
-                    this.db.updateDeviceBlockStatus(deviceMac, isActuallyBlocked, 'sync_with_unifi');
-                }
                 
                 const scheduleData = device.schedule_data ? JSON.parse(device.schedule_data) : null;
                 
@@ -321,6 +360,11 @@ class ParentalControlsManager {
     shouldDeviceBeBlocked(device, scheduleData) {
         const now = new Date();
         
+        // A persisted block (user/manual intent) wins over the schedule so a
+        // manually blocked device is never auto-unblocked the moment its window
+        // closes.
+        if (device.is_blocked) return true;
+        
         // Check if temporarily blocked
         if (device.blocked_until) {
             const blockedUntil = new Date(device.blocked_until);
@@ -332,7 +376,7 @@ class ParentalControlsManager {
             return this.isBlockedBySchedule(scheduleData, now);
         }
         
-        return device.is_blocked;
+        return false;
     }
 
     // Helper method to retry UniFi operations with re-authentication on 401 errors
@@ -401,25 +445,39 @@ class ParentalControlsManager {
         }
     }
 
-    // Check if current time falls within blocked schedule
-    isBlockedBySchedule(scheduleData, now = new Date()) {
-        const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
-        const timeString = now.toTimeString().substring(0, 5); // "HH:MM"
-        
-        const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-        const dayName = dayNames[dayOfWeek];
-        
-        if (!scheduleData[dayName]) return false;
-        
-        const daySchedule = scheduleData[dayName];
-        
-        // Check if current time falls within any blocked period
-        for (const period of daySchedule.blockedPeriods || []) {
-            if (timeString >= period.start && timeString <= period.end) {
-                return true;
+    // Check if current time falls within blocked schedule. Times are compared as
+    // minute-of-day integers, and a window where start > end spans midnight
+    // (inclusive at both ends). Evaluated in the configured timeZone.
+    isBlockedBySchedule(scheduleData, now = new Date(), timeZone = this.timeZone) {
+        if (!scheduleData) return false;
+
+        const { dayIndex, minuteOfDay } = getZonedParts(now, timeZone);
+        const today = DAY_NAMES[dayIndex];
+        const yesterday = DAY_NAMES[(dayIndex + 6) % 7];
+
+        const todaySchedule = scheduleData[today];
+        if (todaySchedule) {
+            for (const period of todaySchedule.blockedPeriods || []) {
+                const start = parseTimeToMinutes(period.start);
+                const end = parseTimeToMinutes(period.end);
+                if (start == null || end == null) continue;
+                if (isMinuteInWindow(minuteOfDay, start, end)) return true;
             }
         }
-        
+
+        // Carry-over: a previous day's overnight window (start > end) also covers
+        // the early-morning hours of the current day (e.g. Monday 22:00-08:00
+        // covers Tuesday 07:30). Per-day schedule shape is unchanged.
+        const yesterdaySchedule = scheduleData[yesterday];
+        if (yesterdaySchedule) {
+            for (const period of yesterdaySchedule.blockedPeriods || []) {
+                const start = parseTimeToMinutes(period.start);
+                const end = parseTimeToMinutes(period.end);
+                if (start == null || end == null) continue;
+                if (start > end && minuteOfDay <= end) return true;
+            }
+        }
+
         return false;
     }
 
@@ -435,21 +493,45 @@ class ParentalControlsManager {
         }, 60000);
     }
 
-    // Enforce parental control rules
+    // Enforce parental control rules. One pass: current block state is fetched
+    // fresh from the controller once per pass, so a device whose window ends is
+    // unblocked even if the Parental Controls tab was never opened. A device
+    // already blocked is never re-blocked, and no is_blocked / parental_logs
+    // writes happen here (the controller wins).
     async enforceParentalRules() {
         try {
+            if (!this.unifiController.isConfigured()) return;
+
+            let blocked;
+            try {
+                blocked = await this.unifiController.getBlockedDevices({ strict: true });
+            } catch (error) {
+                console.warn('Schedule enforcement skipped: could not determine controller block state:', error.message);
+                return;
+            }
+            const currentlyBlocked = new Set(blocked.map((d) => String(d.mac).toLowerCase()));
+            this.blockedDevices = new Set(currentlyBlocked);
+
             const managedDevices = await this.db.getManagedDevices();
-            
             for (const device of managedDevices) {
+                const mac = String(device.mac);
+                // An active bonus session owns the device; don't re-block it a
+                // minute after the user granted time.
+                if (this.bonusTimeTimers.has(mac)) continue;
+
+                const macLower = mac.toLowerCase();
                 const scheduleData = device.schedule_data ? JSON.parse(device.schedule_data) : null;
-                const shouldBeBlocked = this.shouldDeviceBeBlocked(device, scheduleData);
-                const isCurrentlyBlocked = this.blockedDevices.has(device.mac);
-                
-                if (shouldBeBlocked && !isCurrentlyBlocked) {
-                    await this.blockDevice(device.mac, 'schedule', null);
-                } else if (!shouldBeBlocked && isCurrentlyBlocked && !device.is_blocked) {
-                    // Only unblock if not manually blocked
-                    await this.unblockDevice(device.mac, 'schedule');
+                const desired = this.shouldDeviceBeBlocked(device, scheduleData);
+                const actual = currentlyBlocked.has(macLower);
+
+                try {
+                    if (desired && !actual) {
+                        await this.applyControllerBlock(mac, true, 'schedule');
+                    } else if (!desired && actual) {
+                        await this.applyControllerBlock(mac, false, 'schedule');
+                    }
+                } catch (error) {
+                    console.error(`Schedule enforcement failed for device ${mac}:`, error.message);
                 }
             }
         } catch (error) {
