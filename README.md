@@ -21,7 +21,7 @@ A comprehensive web application for monitoring UniFi networks with advanced pare
 ### 🔒 **Enterprise Security**
 - **Encrypted Credential Storage**: AES-256-CBC encryption for all passwords and sensitive data
 - **Secure Key Management**: Automatic key generation with restricted file permissions
-- **No Plain Text Passwords**: All credentials encrypted at rest in configuration files
+- **No Plain Text Passwords**: Every credential the app accepts (UniFi, database, API, secret, Pushover, ntfy, UI) is encrypted at rest in configuration files. Values written before this fix stay plaintext until settings are next saved — the boot warning names those fields.
 - **API Security**: No credential exposure in API responses with secure session handling
 - **Content Security Policy**: CSP-compliant code preventing security vulnerabilities
 
@@ -421,7 +421,7 @@ UniSentinal/
 - 🔐 **config/.env**: Settings with encrypted passwords
 - 🗝️ **config/.key**: Master encryption key (0o600 permissions)
 - 📁 **config/**: Directory with restricted access (0o700 permissions)
-- 🛡️ **No plain text**: All sensitive data encrypted at rest
+- 🛡️ **No plain text**: Every accepted credential encrypted at rest (legacy cleartext values stay until the next settings save; the boot warning names them)
 
 ## Configuration
 
