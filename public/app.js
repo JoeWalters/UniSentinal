@@ -1115,8 +1115,11 @@ class UniFiSentinel {
         const el = document.getElementById(id);
         if (!el) return;
         if (!el.dataset.dialogOpen) {
-            this._dialogReturnFocus = document.activeElement;
+            // Remember the opener on the dialog itself: two dialogs can be open at
+            // once (settings over the device list), and a single slot loses the
+            // original trigger when the second one opens.
             el.dataset.dialogOpen = '1';
+            el._returnFocus = document.activeElement;
         }
         el.style.display = 'block';
         el.removeAttribute('aria-hidden');
@@ -1133,8 +1136,8 @@ class UniFiSentinel {
         el.setAttribute('aria-hidden', 'true');
         delete el.dataset.dialogOpen;
 
-        const restoresTo = this._dialogReturnFocus;
-        this._dialogReturnFocus = null;
+        const restoresTo = el._returnFocus;
+        el._returnFocus = null;
         if (restoresTo && document.contains(restoresTo) && typeof restoresTo.focus === 'function') {
             restoresTo.focus();
         }
