@@ -1303,70 +1303,6 @@ class UniFiSentinel {
         this.showNotification(message, 'error');
     }
 
-    // Toggle device block status
-    async toggleDeviceBlock(mac, isCurrentlyBlocked) {
-        try {
-            const action = isCurrentlyBlocked ? 'unblock' : 'block';
-            console.log(`Toggling device ${mac}: ${action}`);
-            
-            // Show loading state
-            const button = document.querySelector(`button[data-mac="${mac}"].toggle-block-btn`);
-            if (button) {
-                button.disabled = true;
-                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
-            }
-            
-            const response = await fetch(`/api/parental/devices/${mac}/${action}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-            
-            if (!response.ok) {
-                throw new Error(`Failed to ${action} device: ${response.statusText}`);
-            }
-            
-            const result = await response.json();
-            
-            if (result.success) {
-                this.showNotification(`Device ${isCurrentlyBlocked ? 'unblocked' : 'blocked'} successfully`, 'success');
-                // Refresh the managed devices list to show updated status
-                await this.loadParentalControlsData();
-            } else {
-                throw new Error(result.error || `Failed to ${action} device`);
-            }
-            
-        } catch (error) {
-            console.error('Error toggling device block:', error);
-            this.showError(`Error: ${error.message}`);
-            
-            // Re-enable button
-            const button = document.querySelector(`button[data-mac="${mac}"].toggle-block-btn`);
-            if (button) {
-                button.disabled = false;
-                const isBlocked = button.getAttribute('data-blocked') === 'true';
-                button.innerHTML = `<i class="fas ${isBlocked ? 'fa-check' : 'fa-ban'}"></i> ${isBlocked ? 'Unblock' : 'Block'}`;
-            }
-        }
-    }
-    
-    // Open device management modal
-    manageDevice(mac) {
-        console.log(`Opening management for device: ${mac}`);
-        
-        // Find the device data
-        const device = this.managedDevices?.find(d => d.mac === mac);
-        if (!device) {
-            this.showError('Device not found');
-            return;
-        }
-        
-        // TODO: Implement comprehensive device management modal
-        // For now, show a simple alert with device info
-        alert(`Device Management\n\nName: ${device.device_name}\nMAC: ${device.mac}\nStatus: ${device.is_blocked ? 'Blocked' : 'Allowed'}\n\n[Full management interface coming soon]`);
-    }
-
     startAutoRefresh() {
         // Full refresh every 30 seconds
         this.autoRefreshInterval = setInterval(async () => {
@@ -2750,7 +2686,7 @@ class UniFiSentinel {
             
             // Refresh all views and page data to show updated status
             setTimeout(async () => {
-                await this.refreshParentalControls();
+                await this.loadParentalControlsData();
                 await this.loadDevices(); // Refresh main device list
                 if (this.currentManagedDevice && this.currentManagedDevice.mac === mac) {
                     await this.refreshDeviceManagementModal();
@@ -2784,7 +2720,7 @@ class UniFiSentinel {
             
             // Refresh all views and page data to show updated status
             setTimeout(async () => {
-                await this.refreshParentalControls();
+                await this.loadParentalControlsData();
                 await this.loadDevices(); // Refresh main device list
                 if (this.currentManagedDevice && this.currentManagedDevice.mac === mac) {
                     await this.refreshDeviceManagementModal();
