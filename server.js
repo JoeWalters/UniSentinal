@@ -1,5 +1,4 @@
 const express = require('express');
-const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const session = require('express-session');
@@ -24,6 +23,7 @@ const DatabaseManager = require('./src/database/DatabaseManager');
 const ParentalControlsManager = require('./src/controllers/ParentalControlsManager');
 const Logger = require('./src/utils/Logger');
 const CredentialManager = require('./src/utils/CredentialManager');
+const { rejectCrossSiteMutations } = require('./src/middleware/rejectCrossSiteMutations');
 const { validateSettingsPayload, applySettingsToEnv } = require('./src/utils/envFile');
 const NotificationManager = require('./src/utils/NotificationManager');
 
@@ -36,19 +36,28 @@ const credentialManager = new CredentialManager();
 const notificationManager = new NotificationManager();
 
 // Decrypt environment variables that were loaded from .env
-const sensitiveFields = ['UNIFI_PASSWORD'];
-sensitiveFields.forEach(field => {
+const { SENSITIVE_FIELDS } = require('./src/utils/CredentialManager');
+const plaintextFields = [];
+SENSITIVE_FIELDS.forEach(field => {
     if (process.env[field] && credentialManager.isEncrypted(process.env[field])) {
         console.log(`[SECURITY] Decrypting environment variable: ${field}`);
-        const decrypted = credentialManager.decrypt(process.env[field]);
+        // decryptDetailed() says *why* it failed, so a missing/regenerated key and
+        // a value that failed its authentication check are not reported alike.
+        const { value: decrypted, error: decryptError } = credentialManager.decryptDetailed(process.env[field]);
         if (decrypted !== null) {
             process.env[field] = decrypted;
         } else {
-            console.error(`[SECURITY] Failed to decrypt ${field} - credential may be corrupted`);
+            console.error(`[SECURITY] Cannot use ${field}: ${decryptError}. The value has been removed from this run — re-enter it in Settings.`);
             delete process.env[field];
         }
+    } else if (process.env[field]) {
+        // Present but not encrypted: a legacy cleartext value. Never log the value.
+        plaintextFields.push(field);
     }
 });
+if (plaintextFields.length > 0) {
+    logger.warn(`[SECURITY] Plaintext credential fields in .env (save settings to encrypt them): ${plaintextFields.join(', ')}`);
+}
 
 // Middleware - Helmet 6.x compatible CSP (allow HTTP for local development)
 app.use(helmet({
@@ -57,7 +66,6 @@ app.use(helmet({
             defaultSrc: ["'self'"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com"],
             scriptSrc: ["'self'"],
-            scriptSrcAttr: ["'unsafe-inline'"],
             imgSrc: ["'self'", "data:", "https:"],
             fontSrc: ["'self'", "https://cdnjs.cloudflare.com"],
             connectSrc: ["'self'"],
@@ -65,7 +73,10 @@ app.use(helmet({
         }
     }
 }));
-app.use(cors());
+// No CORS headers: the UI is same-origin, and a permissive CORS policy let any
+// page the operator visited drive this API. Mutating requests from a browser
+// that is not on this origin are refused outright.
+app.use(rejectCrossSiteMutations());
 app.use(express.json());
 
 // ── Session & optional Web UI Auth ───────────────────────────────────────────
@@ -204,15 +215,18 @@ app.post('/api/auth/login', rateLimit({ windowMs: 60 * 1000, max: 10, message: {
         return res.status(500).json({ error: 'UI_PASSWORD not configured' });
     }
 
-    // Constant-time comparison to prevent timing attacks
-    const userMatch = crypto.timingSafeEqual(
-        Buffer.from(username || ''),
-        Buffer.from(configUser)
-    );
-    const passMatch = crypto.timingSafeEqual(
-        Buffer.from(password || ''),
-        Buffer.from(configPass)
-    );
+    // Constant-time comparison. crypto.timingSafeEqual() throws when the two
+    // buffers differ in length, which turned a wrong-length password into a 500
+    // — a reliable one-bit-per-request answer to "how long is the secret?". Both
+    // sides are hashed to a fixed width first, so the comparison is still
+    // constant-time and never throws, whatever the input.
+    const constantTimeEquals = (a, b) => {
+        const digest = (value) => crypto.createHash('sha256').update(String(value ?? ''), 'utf8').digest();
+        return crypto.timingSafeEqual(digest(a), digest(b));
+    };
+
+    const userMatch = constantTimeEquals(username, configUser);
+    const passMatch = constantTimeEquals(password, configPass);
 
     if (userMatch && passMatch) {
         req.session.authenticated = true;
@@ -349,10 +363,16 @@ app.post('/api/devices/acknowledge-all', async (req, res) => {
 
 app.get('/api/scan', async (req, res) => {
     try {
-        const newDevices = await unifiController.scanForNewDevices();
-        if (newDevices.length > 0) {
-            await dbManager.addNewDevices(newDevices);
-            logger.info(`Manual scan found ${newDevices.length} new device(s)`);
+        // scanForNewDevices() returns every client the controller knows about;
+        // addNewDevices() is what knows which of them are actually new. Report
+        // that count, or a rescan of an unchanged network claims N new devices.
+        const allScannedDevices = await unifiController.scanForNewDevices();
+        let newDevices = [];
+        if (allScannedDevices.length > 0) {
+            ({ newDevices } = await dbManager.addNewDevices(allScannedDevices));
+            if (newDevices.length > 0) {
+                logger.info(`Manual scan found ${newDevices.length} genuinely new device(s)`);
+            }
         }
         res.json({ 
             success: true, 

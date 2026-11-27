@@ -190,7 +190,7 @@ class UnifiController {
         }
     }
 
-    async getBlockedUsers() {
+    async getBlockedUsers(options = {}) {
         try {
             await this.ensureLoggedIn();
             await this.rateLimit();
@@ -206,13 +206,16 @@ class UnifiController {
             }
         } catch (error) {
             console.error('❌ Error fetching blocked users:', error.message);
+            // Strict callers treat a controller failure as unknown state and
+            // must not act on it; the default (non-strict) behaviour is unchanged.
+            if (options.strict) throw error;
             return [];
         }
     }
 
     // Legacy API compatibility - alias for getBlockedUsers
-    async getBlockedDevices() {
-        return await this.getBlockedUsers();
+    async getBlockedDevices(options = {}) {
+        return await this.getBlockedUsers(options);
     }
 
     // Legacy API compatibility - alias for getAllKnownDevices

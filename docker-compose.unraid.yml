@@ -20,6 +20,9 @@ services:
       - UNIFI_SITE=default              # Default: default
       - PORT=3000                       # Default: 3000
       - NODE_ENV=production             # Default: production
+      # TZ controls the timezone used to evaluate parental-control schedules;
+      # override via the Unraid template variable if the default isn't right.
+      - TZ=${TZ:-America/New_York}
       - CONFIG_DIR=/config              # Default: /config
       
     volumes:

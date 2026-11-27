@@ -24,11 +24,19 @@ class UniFiSentinel {
         this.setupScheduleEventListeners(); // Setup schedule management event listeners
         this.initializeDarkMode(); // Initialize dark mode before loading content
         this.setupButtonAnimations(); // Setup button click animations
+        this.setupInlineSwitchStopPropagation(); // Stop switch clicks reaching the summary
         this.loadDevices();
         this.checkStatus();
         this.loadVersion();
         this.startAutoRefresh();
         this.checkAuthStatus();
+    }
+
+    setupInlineSwitchStopPropagation() {
+        // Restore the removed inline handler without an inline event attribute
+        document.querySelectorAll('.switch-inline').forEach((label) => {
+            label.addEventListener('click', (event) => event.stopPropagation());
+        });
     }
 
     bindEvents() {
@@ -192,12 +200,19 @@ class UniFiSentinel {
             });
         }
 
-        // Escape key to close modals
+        // Dialogs: Escape closes only the topmost one, and Tab stays inside it.
         document.addEventListener('keydown', (e) => {
+            const open = this.getOpenDialogs();
+            if (open.length === 0) return;
+
             if (e.key === 'Escape') {
-                this.closeModal();
-                this.closeAddDeviceModal();
-                this.closeDeviceManagementModal();
+                e.preventDefault();
+                this.closeDialog(open[open.length - 1]);
+                return;
+            }
+
+            if (e.key === 'Tab') {
+                this.trapFocusInDialog(open[open.length - 1], e);
             }
         });
     }
@@ -850,7 +865,7 @@ class UniFiSentinel {
         // Show/hide acknowledge button depending on whether device is already known
         const ackBtn = document.getElementById('modalAcknowledgeBtn');
         if (ackBtn) ackBtn.style.display = device.acknowledged ? 'none' : '';
-        modal.style.display = 'block';
+        this.openDialog('deviceModal');
     }
 
     switchDeviceModalTab(tab) {
@@ -1086,8 +1101,80 @@ class UniFiSentinel {
         `;
     }
 
+    // ── Dialog behaviour ─────────────────────────────────────────────────────
+    // The four overlays are plain divs toggled with style.display. These helpers
+    // make them behave like dialogs: focus moves in on open and is restored on
+    // close, Tab cycles inside the topmost one, and Escape closes only that one.
+    getOpenDialogs() {
+        return ['deviceModal', 'settingsModal', 'addDeviceModal', 'deviceManagementModal']
+            .map((id) => document.getElementById(id))
+            .filter((el) => el && el.style.display && el.style.display !== 'none');
+    }
+
+    openDialog(id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (!el.dataset.dialogOpen) {
+            // Remember the opener on the dialog itself: two dialogs can be open at
+            // once (settings over the device list), and a single slot loses the
+            // original trigger when the second one opens.
+            el.dataset.dialogOpen = '1';
+            el._returnFocus = document.activeElement;
+        }
+        el.style.display = 'block';
+        el.removeAttribute('aria-hidden');
+        const focusable = this.getFocusableIn(el);
+        const target = focusable[0] || el;
+        if (target === el && !el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+        target.focus();
+    }
+
+    closeDialog(elOrId) {
+        const el = typeof elOrId === 'string' ? document.getElementById(elOrId) : elOrId;
+        if (!el) return;
+        el.style.display = 'none';
+        el.setAttribute('aria-hidden', 'true');
+        delete el.dataset.dialogOpen;
+
+        const restoresTo = el._returnFocus;
+        el._returnFocus = null;
+        if (restoresTo && document.contains(restoresTo) && typeof restoresTo.focus === 'function') {
+            restoresTo.focus();
+        }
+    }
+
+    getFocusableIn(container) {
+        const selector = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+        return Array.from(container.querySelectorAll(selector))
+            .filter((el) => el.offsetParent !== null || el === document.activeElement);
+    }
+
+    trapFocusInDialog(dialog, event) {
+        const focusable = this.getFocusableIn(dialog);
+        if (focusable.length === 0) {
+            event.preventDefault();
+            return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement;
+
+        if (!dialog.contains(active)) {
+            event.preventDefault();
+            first.focus();
+            return;
+        }
+        if (event.shiftKey && active === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && active === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    }
+
     closeModal() {
-        document.getElementById('deviceModal').style.display = 'none';
+        this.closeDialog('deviceModal');
         this.selectedDevice = null;
         this.currentModalTab = 'info';
     }
@@ -1174,24 +1261,24 @@ class UniFiSentinel {
                 <div class="version-grid">
                     <div class="version-item">
                         <strong>Application Version:</strong>
-                        <span>${versionInfo.packageVersion || 'Unknown'}</span>
+                        <span>${this.escapeHtml(versionInfo.packageVersion || 'Unknown')}</span>
                     </div>
                     ${versionInfo.version && versionInfo.version !== versionInfo.packageVersion ? `
                         <div class="version-item">
                             <strong>Build Version:</strong>
-                            <span>${versionInfo.version}</span>
+                            <span>${this.escapeHtml(versionInfo.version)}</span>
                         </div>
                     ` : ''}
                     ${versionInfo.timestampVersion ? `
                         <div class="version-item">
                             <strong>Build ID:</strong>
-                            <span>${versionInfo.timestampVersion}</span>
+                            <span>${this.escapeHtml(versionInfo.timestampVersion)}</span>
                         </div>
                     ` : ''}
                     ${versionInfo.commitHash ? `
                         <div class="version-item">
                             <strong>Commit:</strong>
-                            <span>${versionInfo.commitHash}</span>
+                            <span>${this.escapeHtml(versionInfo.commitHash)}</span>
                         </div>
                     ` : ''}
                     ${versionInfo.buildDate ? `
@@ -1203,7 +1290,7 @@ class UniFiSentinel {
                     ${versionInfo.dockerVersion ? `
                         <div class="version-item">
                             <strong>Docker Version:</strong>
-                            <span>${versionInfo.dockerVersion}</span>
+                            <span>${this.escapeHtml(versionInfo.dockerVersion)}</span>
                         </div>
                     ` : ''}
                 </div>
@@ -1293,70 +1380,6 @@ class UniFiSentinel {
 
     showError(message) {
         this.showNotification(message, 'error');
-    }
-
-    // Toggle device block status
-    async toggleDeviceBlock(mac, isCurrentlyBlocked) {
-        try {
-            const action = isCurrentlyBlocked ? 'unblock' : 'block';
-            console.log(`Toggling device ${mac}: ${action}`);
-            
-            // Show loading state
-            const button = document.querySelector(`button[data-mac="${mac}"].toggle-block-btn`);
-            if (button) {
-                button.disabled = true;
-                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
-            }
-            
-            const response = await fetch(`/api/parental/devices/${mac}/${action}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-            
-            if (!response.ok) {
-                throw new Error(`Failed to ${action} device: ${response.statusText}`);
-            }
-            
-            const result = await response.json();
-            
-            if (result.success) {
-                this.showNotification(`Device ${isCurrentlyBlocked ? 'unblocked' : 'blocked'} successfully`, 'success');
-                // Refresh the managed devices list to show updated status
-                await this.loadParentalControlsData();
-            } else {
-                throw new Error(result.error || `Failed to ${action} device`);
-            }
-            
-        } catch (error) {
-            console.error('Error toggling device block:', error);
-            this.showError(`Error: ${error.message}`);
-            
-            // Re-enable button
-            const button = document.querySelector(`button[data-mac="${mac}"].toggle-block-btn`);
-            if (button) {
-                button.disabled = false;
-                const isBlocked = button.getAttribute('data-blocked') === 'true';
-                button.innerHTML = `<i class="fas ${isBlocked ? 'fa-check' : 'fa-ban'}"></i> ${isBlocked ? 'Unblock' : 'Block'}`;
-            }
-        }
-    }
-    
-    // Open device management modal
-    manageDevice(mac) {
-        console.log(`Opening management for device: ${mac}`);
-        
-        // Find the device data
-        const device = this.managedDevices?.find(d => d.mac === mac);
-        if (!device) {
-            this.showError('Device not found');
-            return;
-        }
-        
-        // TODO: Implement comprehensive device management modal
-        // For now, show a simple alert with device info
-        alert(`Device Management\n\nName: ${device.device_name}\nMAC: ${device.mac}\nStatus: ${device.is_blocked ? 'Blocked' : 'Allowed'}\n\n[Full management interface coming soon]`);
     }
 
     startAutoRefresh() {
@@ -1649,7 +1672,6 @@ class UniFiSentinel {
 
     // Settings Modal
     async showSettingsModal() {
-        const modal = document.getElementById('settingsModal');
         
         // Load current settings
         try {
@@ -1669,7 +1691,7 @@ class UniFiSentinel {
         // Load version info
         await this.loadVersion();
         
-        modal.style.display = 'block';
+        this.openDialog('settingsModal');
     }
 
     async updateConfigurationStatus(settings, testSuccessful = false) {
@@ -1715,7 +1737,7 @@ class UniFiSentinel {
     }
 
     closeSettingsModal() {
-        document.getElementById('settingsModal').style.display = 'none';
+        this.closeDialog('settingsModal');
     }
 
     populateSettingsForm(settings) {
@@ -1918,8 +1940,8 @@ class UniFiSentinel {
         const logEntries = logs.map(log => `
             <div class="log-entry">
                 <span class="log-timestamp">${new Date(log.timestamp).toLocaleString()}</span>
-                <span class="log-level ${log.level}">${log.level.toUpperCase()}</span>
-                <span class="log-message">${log.message}</span>
+                <span class="log-level ${this.escapeHtml(log.level)}">${this.escapeHtml(log.level).toUpperCase()}</span>
+                <span class="log-message">${this.escapeHtml(log.message)}</span>
             </div>
         `).join('');
 
@@ -2234,7 +2256,7 @@ class UniFiSentinel {
             
             const devices = await response.json();
             this.renderAvailableDevices(devices);
-            document.getElementById('addDeviceModal').style.display = 'flex';
+            this.openDialog('addDeviceModal');
         } catch (error) {
             console.error('Error loading available devices:', error);
             
@@ -2255,7 +2277,7 @@ class UniFiSentinel {
     // Render available devices in the add device modal
     renderAvailableDevices(devices) {
         const devicesList = document.getElementById('availableDevicesList');
-        const searchInput = document.getElementById('deviceSearchInput');
+        const searchInput = document.getElementById('newDeviceSearchInput');
         
         // Debug: Log device data
         const wiredCount = devices.filter(d => d.is_wired).length;
@@ -2303,7 +2325,7 @@ class UniFiSentinel {
 
     // Setup event listeners for device filters
     setupDeviceFilterEventListeners() {
-        const searchInput = document.getElementById('deviceSearchInput');
+        const searchInput = document.getElementById('newDeviceSearchInput');
         const statusFilter = document.getElementById('statusFilter');
         const connectionFilter = document.getElementById('connectionFilter');
         const vendorFilter = document.getElementById('vendorFilter');
@@ -2331,7 +2353,7 @@ class UniFiSentinel {
     applyFilters() {
         if (!this.allAvailableDevices) return;
 
-        const searchTerm = document.getElementById('deviceSearchInput').value.toLowerCase();
+        const searchTerm = document.getElementById('newDeviceSearchInput').value.toLowerCase();
         const statusFilter = document.getElementById('statusFilter').value;
         const connectionFilter = document.getElementById('connectionFilter').value;
         const vendorFilter = document.getElementById('vendorFilter').value;
@@ -2552,10 +2574,10 @@ class UniFiSentinel {
 
     // Close add device modal
     closeAddDeviceModal() {
-        document.getElementById('addDeviceModal').style.display = 'none';
+        this.closeDialog('addDeviceModal');
         
         // Clear search and filters
-        document.getElementById('deviceSearchInput').value = '';
+        document.getElementById('newDeviceSearchInput').value = '';
         document.getElementById('statusFilter').value = 'all';
         document.getElementById('connectionFilter').value = 'all';
         document.getElementById('vendorFilter').value = 'all';
@@ -2572,7 +2594,7 @@ class UniFiSentinel {
 
     // Close device management modal
     closeDeviceManagementModal() {
-        document.getElementById('deviceManagementModal').style.display = 'none';
+        this.closeDialog('deviceManagementModal');
         this.currentManagedDevice = null;
     }
 
@@ -2590,7 +2612,7 @@ class UniFiSentinel {
             
             this.currentManagedDevice = device;
             this.populateDeviceManagementModal(device);
-            document.getElementById('deviceManagementModal').style.display = 'flex';
+            this.openDialog('deviceManagementModal');
         } catch (error) {
             console.error('Error loading device for management:', error);
             this.showError('Failed to load device details');
@@ -2600,8 +2622,9 @@ class UniFiSentinel {
     // Populate device management modal with device data
     populateDeviceManagementModal(device) {
         // Update modal title
-        document.getElementById('managementModalTitle').innerHTML = 
-            `<i class="fas fa-cog"></i> Managing: ${device.device_name}`;
+        const title = document.getElementById('managementModalTitle');
+        title.innerHTML = '<i class="fas fa-cog"></i>';
+        title.append(document.createTextNode(` Managing: ${device.device_name ?? ''}`));
 
         // Switch to controls tab by default
         this.switchManagementTab('controls');
@@ -2741,7 +2764,7 @@ class UniFiSentinel {
             
             // Refresh all views and page data to show updated status
             setTimeout(async () => {
-                await this.refreshParentalControls();
+                await this.loadParentalControlsData();
                 await this.loadDevices(); // Refresh main device list
                 if (this.currentManagedDevice && this.currentManagedDevice.mac === mac) {
                     await this.refreshDeviceManagementModal();
@@ -2775,7 +2798,7 @@ class UniFiSentinel {
             
             // Refresh all views and page data to show updated status
             setTimeout(async () => {
-                await this.refreshParentalControls();
+                await this.loadParentalControlsData();
                 await this.loadDevices(); // Refresh main device list
                 if (this.currentManagedDevice && this.currentManagedDevice.mac === mac) {
                     await this.refreshDeviceManagementModal();
@@ -2815,9 +2838,9 @@ class UniFiSentinel {
                     <div class="time-periods" id="${day}-periods">
                         ${daySchedule.blockedPeriods.map((period, periodIndex) => `
                             <div class="time-period">
-                                <input type="time" value="${period.start}" data-day="${day}" data-period="${periodIndex}" data-type="start">
+                                <input type="time" value="${this.escapeHtml(period.start)}" data-day="${day}" data-period="${periodIndex}" data-type="start">
                                 <span>to</span>
-                                <input type="time" value="${period.end}" data-day="${day}" data-period="${periodIndex}" data-type="end">
+                                <input type="time" value="${this.escapeHtml(period.end)}" data-day="${day}" data-period="${periodIndex}" data-type="end">
                                 <button class="btn-small btn-danger remove-time-period-btn" data-day="${day}" data-period="${periodIndex}">
                                     <i class="fas fa-trash"></i>
                                 </button>
@@ -2942,8 +2965,8 @@ class UniFiSentinel {
             activityLogs.innerHTML = logs.map(log => `
                 <div class="activity-log-item">
                     <div class="log-details">
-                        <div class="log-action">${this.formatLogAction(log.action)}</div>
-                        <div class="log-reason">${log.reason || 'No reason specified'}</div>
+                        <div class="log-action">${this.escapeHtml(this.formatLogAction(log.action))}</div>
+                        <div class="log-reason">${this.escapeHtml(log.reason || 'No reason specified')}</div>
                     </div>
                     <div class="log-timestamp">${new Date(log.timestamp).toLocaleString()}</div>
                 </div>
